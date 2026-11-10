@@ -1,0 +1,9 @@
+.DS_Store
+build/
+*.app
+*.dSYM
+*.module-cache
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+*.log
