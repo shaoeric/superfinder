@@ -55,8 +55,12 @@ final class PinnedImageWindow: NSPanel, NSWindowDelegate {
         trackingView.onCopy = { [weak self] in self?.copyToPasteboard() }
         trackingView.onShowToolbar = { [weak self] in self?.onShowToolbar?() }
 
+        closeButton.title = ""
+        closeButton.alternateTitle = ""
+        closeButton.attributedTitle = NSAttributedString(string: "")
         closeButton.bezelStyle = .circular
         closeButton.isBordered = false
+        closeButton.imagePosition = .imageOnly
         closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "关闭贴图")
         closeButton.contentTintColor = .white
         closeButton.target = self
@@ -180,6 +184,11 @@ final class PinTrackingView: NSView {
     private var dragStartWindowOrigin: CGPoint?
 
     override var acceptsFirstResponder: Bool { true }
+
+    /// A click on an inactive pin must both unlock/activate the panel and start
+    /// the drag. Without this, AppKit consumes the first click as the window
+    /// activation click and the pin only moves on the second drag.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

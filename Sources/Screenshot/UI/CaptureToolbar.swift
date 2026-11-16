@@ -349,6 +349,9 @@ final class CaptureToolbar: NSPanel {
 
     private func makeIconButton(symbol: String, tooltip: String) -> NSButton {
         let button = NSButton()
+        button.title = ""
+        button.alternateTitle = ""
+        button.attributedTitle = NSAttributedString(string: "")
         button.bezelStyle = .regularSquare
         button.isBordered = false
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)

@@ -15,6 +15,7 @@ PIN="Sources/Screenshot/UI/PinnedImageWindow.swift"
 ANNOTATION="Sources/Screenshot/Core/Annotation.swift"
 PALETTE="Sources/Screenshot/UI/ColorPalettePanel.swift"
 TOOLBAR="Sources/Screenshot/UI/CaptureToolbar.swift"
+HUD="Sources/Screenshot/UI/CaptureHUD.swift"
 
 # Text editing must only auto-commit on a new mouse-down, never on the
 # mouse-up of the click that opened the editor (which used to flash and close).
@@ -46,6 +47,16 @@ if ! grep -q 'performKeyEquivalent' "$PIN"; then
   fail "贴图缺少 ⌘C 快捷键处理"
 fi
 
+# Text tool must use a language-neutral icon, not the localized "格式" glyph.
+if ! grep -q 'case .text: return "textbox"' "$HUD"; then
+  fail "文本工具仍使用会被本地化的 textformat 符号"
+fi
+
+# An inactive pinned window must accept the first click for dragging.
+if ! grep -q 'acceptsFirstMouse' "$PIN"; then
+  fail "贴图窗口首击不能直接拖拽"
+fi
+
 # Color palette must be above the overlay/toolbar window level.
 if ! grep -q 'screenSaver.rawValue + 3' "$PALETTE"; then
   fail "取色板窗口层级不够高"
@@ -54,4 +65,4 @@ fi
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
-echo "截屏功能检查通过：文本编辑、左上角旋转柄、⌘C、贴图工具条、取色板。"
+echo "截屏功能检查通过：文本编辑、文本图标、左上角旋转柄、⌘C、贴图工具条/首击拖拽、取色板。"

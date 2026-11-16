@@ -18,8 +18,12 @@ final class ColorSwatchButton: NSButton {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        title = ""
+        alternateTitle = ""
+        attributedTitle = NSAttributedString(string: "")
         isBordered = false
         bezelStyle = .regularSquare
+        imagePosition = .imageOnly
         wantsLayer = true
         layer?.cornerRadius = 4
         layer?.borderWidth = 1

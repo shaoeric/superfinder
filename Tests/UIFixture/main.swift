@@ -52,6 +52,12 @@ do {
     let swatches = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? ColorSwatchButton } ?? []
     checkEqual(swatches.count, 3, "toolbar exposes one color swatch per drawing tool")
     check(swatches.allSatisfy { $0.frame.width > 0 && $0.frame.height > 0 }, "toolbar swatches are laid out")
+    check(swatches.allSatisfy { $0.title.isEmpty }, "color swatches do not draw a default button title")
+    let toolbarButtons = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? NSButton } ?? []
+    let iconButtons = toolbarButtons.filter { $0.image != nil }
+    check(iconButtons.count >= 11, "toolbar exposes all icon buttons")
+    check(iconButtons.allSatisfy { $0.title.isEmpty }, "toolbar icon buttons do not draw default titles")
+    checkEqual(CaptureTool.text.symbolName, "textbox", "text tool uses a language-neutral text-box symbol")
     check(toolbar.canBecomeKey, "screenshot toolbar can become key")
     check(
         toolbar.level.rawValue > NSWindow.Level.screenSaver.rawValue,
@@ -68,6 +74,7 @@ do {
     let swatches = palette.contentView?.allSubviewsRecursively.compactMap { $0 as? ColorSwatchButton } ?? []
     checkEqual(swatches.count, 12, "palette exposes the preset swatches")
     check(swatches.allSatisfy { $0.frame.width > 0 && $0.frame.height > 0 }, "palette swatches are laid out")
+    check(swatches.allSatisfy { $0.title.isEmpty }, "palette swatches do not draw a default button title")
     check(palette.frame.width >= 200, "palette has room for two swatch rows")
     check(
         palette.level.rawValue > NSWindow.Level.screenSaver.rawValue + 1,
@@ -105,6 +112,7 @@ do {
         print("FAIL: pin content view is not PinTrackingView")
         exit(1)
     }
+    check(tracking.acceptsFirstMouse(for: nil), "an inactive pin starts dragging on the first click")
     var copied = false
     tracking.onCopy = { copied = true }
     let event = NSEvent.keyEvent(

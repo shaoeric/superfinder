@@ -22,7 +22,7 @@ enum CaptureTool: String, CaseIterable {
         case .pointer: return "arrow.up.left"
         case .rectangle: return "rectangle"
         case .line: return "line.diagonal"
-        case .text: return "textformat"
+        case .text: return "textbox"
         case .eraser: return "eraser"
         }
     }
