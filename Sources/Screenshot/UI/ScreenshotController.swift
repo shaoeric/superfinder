@@ -344,20 +344,23 @@ final class ScreenshotController {
         }
 
         if event.type == .leftMouseDragged {
-            if dragMode != nil {
-                handleDrag(event)
-                return nil
+            guard dragMode != nil else { return event }
+            if let local = screenLocalPoint(of: event) {
+                handleDrag(at: local, modifiers: event.modifierFlags)
             }
-            return event
+            return nil
         }
 
         if event.type == .leftMouseUp {
-            if dragMode != nil {
-                handleDrag(event)
-                handleMouseUp(event)
-                return nil
-            }
-            return event
+            guard dragMode != nil else { return event }
+            let local = screenLocalPoint(of: event) ?? dragLastPoint
+            // Use the release event's own location for the final delta. Never
+            // sample the live pointer here: it may already have moved on to
+            // the next gesture, which is exactly the post-release jump this
+            // path used to produce.
+            handleDrag(at: local, modifiers: event.modifierFlags)
+            handleMouseUp(at: local)
+            return nil
         }
         return event
     }
@@ -365,8 +368,7 @@ final class ScreenshotController {
     // MARK: - Mouse down / drag / up
 
     private func handleMouseDown(_ event: NSEvent) {
-        guard let screen = activeScreen else { return }
-        let local = localPoint(for: screen, global: NSEvent.mouseLocation)
+        guard let local = screenLocalPoint(of: event) else { return }
         mouseScreenLocal = local
 
         if state == .selecting {
@@ -506,9 +508,8 @@ final class ScreenshotController {
         }
     }
 
-    private func handleDrag(_ event: NSEvent) {
+    private func handleDrag(at local: CGPoint, modifiers: NSEvent.ModifierFlags) {
         guard let screen = activeScreen else { return }
-        let local = localPoint(for: screen, global: NSEvent.mouseLocation)
         mouseScreenLocal = local
         defer { dragLastPoint = local }
 
@@ -592,7 +593,7 @@ final class ScreenshotController {
                 dragHistoryPushed = true
             }
             var angle = atan2(annotationLocal.y - center.y, annotationLocal.x - center.x) + offset
-            if event.modifierFlags.contains(.shift) {
+            if modifiers.contains(.shift) {
                 let step = CGFloat.pi / 12
                 angle = (angle / step).rounded() * step
             }
@@ -611,12 +612,10 @@ final class ScreenshotController {
         }
     }
 
-    private func handleMouseUp(_ event: NSEvent) {
-        let mode = dragMode
+    private func handleMouseUp(at local: CGPoint) {
+        guard let mode = dragMode else { return }
         dragMode = nil
-        guard let screen = activeScreen else { return }
-        let local = localPoint(for: screen, global: NSEvent.mouseLocation)
-        _ = local
+        mouseScreenLocal = local
 
         switch mode {
         case .selecting:
@@ -1360,6 +1359,17 @@ final class ScreenshotController {
     private func annotationPoint(fromScreenLocal point: CGPoint) -> CGPoint {
         guard let selection else { return point }
         return AnnotationSpace.local(fromScreen: point, selection: selection.rect)
+    }
+
+    private func screenLocalPoint(of event: NSEvent) -> CGPoint? {
+        guard let screen = activeScreen,
+              let overlay = activeOverlay,
+              event.window === overlay else { return nil }
+        return PointerGeometry.screenLocalPoint(
+            eventLocationInWindow: event.locationInWindow,
+            windowFrame: overlay.frame,
+            screenFrame: screen.frame
+        )
     }
 
     private func localPoint(for screen: NSScreen, global: CGPoint) -> CGPoint {

@@ -26,6 +26,7 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
   Sources/Screenshot/Core/CapturedScreen.swift \
   Sources/Screenshot/Core/MemoryBudget.swift \
   Sources/Screenshot/Core/MosaicRenderer.swift \
+  Sources/Screenshot/Core/PointerGeometry.swift \
   Sources/Screenshot/Core/ScreenshotComposer.swift \
   Sources/Screenshot/Core/ScreenshotDocument.swift \
   Sources/Screenshot/Core/TextLayout.swift \
@@ -34,6 +35,7 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
   -o "$BUILD/superfinder-tests"
 
 "$ROOT/scripts/check-low-power.sh"
+"$ROOT/scripts/check-drag-event-sync.sh"
 
 "$BUILD/superfinder-tests"
 

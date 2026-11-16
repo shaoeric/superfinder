@@ -549,6 +549,48 @@ do {
     checkEqual(annotation.center, CGPoint(x: 70, y: 65), "annotation center is selection-local")
 }
 
+// MARK: - Pointer event geometry
+
+do {
+    // The overlay window exactly covers its screen. A click near the top-left
+    // of a 1440x900 screen arrives at (20, 880) in the window's bottom-left
+    // space; it must map to (20, 20) screen-local.
+    let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    checkEqual(
+        PointerGeometry.screenLocalPoint(
+            eventLocationInWindow: CGPoint(x: 20, y: 880),
+            windowFrame: screen,
+            screenFrame: screen
+        ),
+        CGPoint(x: 20, y: 20),
+        "pointer maps to top-left screen space"
+    )
+
+    // Secondary display to the right of the main display.
+    let secondary = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+    checkEqual(
+        PointerGeometry.screenLocalPoint(
+            eventLocationInWindow: CGPoint(x: 200, y: 1000),
+            windowFrame: secondary,
+            screenFrame: secondary
+        ),
+        CGPoint(x: 200, y: 80),
+        "pointer maps correctly on a secondary display"
+    )
+
+    // A display above the main one (positive Y in AppKit's global space).
+    let above = CGRect(x: 0, y: 900, width: 1440, height: 900)
+    checkEqual(
+        PointerGeometry.screenLocalPoint(
+            eventLocationInWindow: CGPoint(x: 100, y: 800),
+            windowFrame: above,
+            screenFrame: above
+        ),
+        CGPoint(x: 100, y: 100),
+        "pointer maps correctly on a display above the main display"
+    )
+}
+
 // MARK: - Native Retina composition
 
 do {
