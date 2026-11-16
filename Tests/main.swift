@@ -462,10 +462,24 @@ do {
     )
     let deletePoint = rect.deleteHandlePoint()
     let rotationPoint = rect.rotationHandlePoint()!
+    let topLeft = rect.handlesForEditing()[0]
     let topRight = rect.handlesForEditing()[2]
     check(hypot(deletePoint.x - topRight.x, deletePoint.y - topRight.y) > 21, "delete button clear of corner resize handle")
     check(hypot(deletePoint.x - rotationPoint.x, deletePoint.y - rotationPoint.y) > 21, "delete button clear of rotation handle")
-    check(hypot(rotationPoint.x - topRight.x, rotationPoint.y - topRight.y) > 21, "rotation handle clear of corner resize handle")
+    check(hypot(rotationPoint.x - topLeft.x, rotationPoint.y - topLeft.y) > 21, "rotation handle clear of corner resize handle")
+    check(rotationPoint.x < topLeft.x && rotationPoint.y < topLeft.y, "rotation handle sits outside the top-left corner")
+
+    let rotated = Annotation(
+        kind: .rectangle(RectangleShape(center: CGPoint(x: 200, y: 160), size: CGSize(width: 140, height: 90), angle: .pi / 6, mosaic: 0)),
+        color: .annotationRed,
+        lineWidth: 3
+    )
+    if case .rectangle(let rotatedShape) = rotated.kind, let rotatedHandle = rotated.rotationHandlePoint() {
+        let local = rotatedShape.screenToLocal(rotatedHandle)
+        check(local.x < -rotatedShape.halfWidth && local.y < -rotatedShape.halfHeight, "rotated rotation handle stays outside the top-left corner")
+    } else {
+        check(false, "rotated rectangle rotation handle")
+    }
 
     let line = Annotation(
         kind: .line(LineShape(start: CGPoint(x: 50, y: 50), end: CGPoint(x: 250, y: 50), pattern: .solid, startArrow: .none, endArrow: .none)),
@@ -589,6 +603,56 @@ do {
         CGPoint(x: 100, y: 100),
         "pointer maps correctly on a display above the main display"
     )
+}
+
+// MARK: - Clipboard image export
+
+do {
+    let image = makeTestImage(width: 40, height: 24)
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("com.shaobt.superfinder.tests.\(UUID().uuidString)"))
+    check(ScreenshotPasteboard.copy(image: image, to: pasteboard), "composed image writes to pasteboard")
+    if let png = pasteboard.data(forType: .png) {
+        check(png.starts(with: [0x89, 0x50, 0x4E, 0x47]), "pasteboard contains PNG data")
+    } else {
+        check(false, "pasteboard PNG data")
+    }
+    check(pasteboard.data(forType: .tiff) != nil, "pasteboard contains TIFF data")
+    pasteboard.clearContents()
+}
+
+// MARK: - Pin editing session
+
+do {
+    let source = makeTestImage(width: 200, height: 100)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 10, y: 20, width: 100, height: 50),
+        image: source,
+        workingScale: 2
+    )
+    let selection = CaptureSelection(rect: CGRect(x: 30, y: 10, width: 40, height: 20))
+    let document = ScreenshotDocument(selection: selection, workingScale: 2, baseImage: captured.image)
+    document.add(Annotation(
+        kind: .rectangle(RectangleShape(center: CGPoint(x: 20, y: 10), size: CGSize(width: 10, height: 8), angle: 0, mosaic: 0)),
+        color: .annotationYellow,
+        lineWidth: 3
+    ))
+    let session = PinEditingSession(capturedScreen: captured, document: document)
+    check(session.capturedScreen === captured, "pin session keeps original full-display capture")
+    check(session.document === document, "pin session keeps annotation document")
+    checkEqual(session.screenFrame, captured.appKitFrame, "pin session keeps original screen frame")
+    checkEqual(session.selection, document.selection, "pin session exposes current selection")
+
+    var moved = document.selection
+    moved.move(by: CGPoint(x: 5, y: 5), within: CGRect(origin: .zero, size: captured.screenPointSize))
+    document.updateSelection(moved)
+    checkEqual(session.selection.rect.origin, CGPoint(x: 35, y: 15), "pin session sees selection edits")
+    checkEqual(session.document.annotations.count, 1, "pin session preserves annotations")
+
+    let editable = document.copyForEditing()
+    editable.moveAnnotation(id: document.annotations[0].id, by: CGPoint(x: 4, y: 4), commit: true)
+    checkEqual(editable.annotations[0].center, CGPoint(x: 24, y: 14), "editing copy moves annotation")
+    checkEqual(session.document.annotations[0].center, CGPoint(x: 20, y: 10), "pin document stays unchanged by editing copy")
+    check(editable.canUndo, "editing copy keeps undo history")
 }
 
 // MARK: - Native Retina composition

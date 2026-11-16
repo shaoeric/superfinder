@@ -629,6 +629,22 @@ final class CaptureOverlayView: NSView {
 
         if let rotatePoint = annotation.rotationHandlePoint() {
             let p = viewPoint(forScreenPoint: CGPoint(x: origin.x + rotatePoint.x, y: origin.y + rotatePoint.y))
+            if case .rectangle(let shape) = annotation.kind {
+                let corner = viewPoint(forScreenPoint: CGPoint(
+                    x: origin.x + shape.corners[0].x,
+                    y: origin.y + shape.corners[0].y
+                ))
+                let connector = CAShapeLayer()
+                connector.frame = bounds
+                let connectorPath = CGMutablePath()
+                connectorPath.move(to: corner)
+                connectorPath.addLine(to: p)
+                connector.path = connectorPath
+                connector.strokeColor = NSColor.white.withAlphaComponent(0.45).cgColor
+                connector.lineWidth = 1
+                connector.lineDashPattern = [4, 3]
+                chromeRoot.addSublayer(connector)
+            }
             let rotate = CAShapeLayer()
             rotate.frame = bounds
             let path = CGMutablePath()

@@ -12,7 +12,7 @@ enum CaptureTool: String, CaseIterable {
         case .pointer: return "选择/移动"
         case .rectangle: return "矩形"
         case .line: return "线段"
-        case .text: return "文本"
+        case .text: return "文本标注（点击画面输入）"
         case .eraser: return "橡皮擦"
         }
     }

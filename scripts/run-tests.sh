@@ -26,9 +26,11 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
   Sources/Screenshot/Core/CapturedScreen.swift \
   Sources/Screenshot/Core/MemoryBudget.swift \
   Sources/Screenshot/Core/MosaicRenderer.swift \
+  Sources/Screenshot/Core/PinEditingSession.swift \
   Sources/Screenshot/Core/PointerGeometry.swift \
   Sources/Screenshot/Core/ScreenshotComposer.swift \
   Sources/Screenshot/Core/ScreenshotDocument.swift \
+  Sources/Screenshot/Core/ScreenshotPasteboard.swift \
   Sources/Screenshot/Core/TextLayout.swift \
   -framework AppKit -framework QuartzCore \
   Tests/main.swift \
@@ -36,7 +38,10 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
 
 "$ROOT/scripts/check-low-power.sh"
 "$ROOT/scripts/check-drag-event-sync.sh"
+"$ROOT/scripts/check-screenshot-features.sh"
 
 "$BUILD/superfinder-tests"
+
+"$ROOT/scripts/run-ui-tests.sh"
 
 "$ROOT/scripts/run-overlay-tests.sh"

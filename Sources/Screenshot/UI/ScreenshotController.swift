@@ -46,6 +46,7 @@ final class ScreenshotController {
     private var eventMonitor: Any?
     private var previousApp: NSRunningApplication?
     private var pins: [PinnedImageWindow] = []
+    private var editingPin: PinnedImageWindow?
 
     private var dragMode: DragMode?
     private var dragStartPoint: CGPoint = .zero
@@ -123,7 +124,11 @@ final class ScreenshotController {
     }
 
     func cancelSession() {
-        cleanup(restoreApp: true)
+        if let pin = editingPin {
+            finishPinEditing(pin: pin, apply: false)
+        } else {
+            cleanup(restoreApp: true)
+        }
     }
 
     func shutdown() {
@@ -138,12 +143,14 @@ final class ScreenshotController {
 
     private func cleanup(restoreApp: Bool) {
         if state == .idle { return }
+        let pinnedEditor = editingPin
         captureService.cancel()
         removeEventMonitor()
         textEditor?.end()
         textEditor = nil
         hud?.hide()
         toolbar?.hideToolbar()
+        ColorPalettePanel.shared.dismissAll()
         NSColorPanel.shared.orderOut(nil)
         NSColorPanel.shared.level = .floating
         for overlay in overlays {
@@ -151,9 +158,13 @@ final class ScreenshotController {
             overlay.orderOut(nil)
         }
         overlays.removeAll()
-        document?.release()
+        if pinnedEditor == nil {
+            document?.release()
+            captured?.releaseDisplayImage()
+        } else {
+            document?.onChange = nil
+        }
         document = nil
-        captured?.releaseDisplayImage()
         captured = nil
         selection = nil
         activeOverlay = nil
@@ -162,11 +173,13 @@ final class ScreenshotController {
         dragMode = nil
         eraseStroke = nil
         editingTextID = nil
+        editingPin = nil
         state = .idle
         onActiveChanged?(false)
         if restoreApp {
             restorePreviousApp()
         }
+        pinnedEditor?.orderFrontRegardless()
     }
 
     private func restorePreviousApp() {
@@ -322,6 +335,16 @@ final class ScreenshotController {
 
         if event.type == .keyDown {
             if textEditor?.isVisible == true { return event }
+            // The color panel has its own hex fields and keyboard handling.
+            // Do not steal Cmd+C / Delete / letter shortcuts from it.
+            if event.window === NSColorPanel.shared { return event }
+            if event.window === ColorPalettePanel.shared {
+                if event.keyCode == 53 {
+                    ColorPalettePanel.shared.hidePalette(restoreFocus: true)
+                    return nil
+                }
+                return event
+            }
             return handleKey(event) ? nil : event
         }
 
@@ -331,10 +354,21 @@ final class ScreenshotController {
             return nil
         }
 
-        if let textEditor, textEditor.isVisible,
+        if event.type == .leftMouseDown,
+           let textEditor, textEditor.isVisible,
            event.window !== textEditor.eventWindow {
+            // Commit only on a new click outside the editor. The mouse-up of
+            // the click that created the text box must not commit it: the
+            // editor would flash open and immediately close with empty text.
             textEditor.commitNow()
-            if event.type == .leftMouseDown { return nil }
+            // Clicking the toolbar or another panel must still reach that
+            // control (for example the color swatch). Clicking the overlay
+            // itself only commits, so a stray click does not start drawing.
+            if event.window === activeOverlay {
+                activeOverlay?.makeKeyAndOrderFront(nil)
+                return nil
+            }
+            return event
         }
 
         if event.type == .leftMouseDown {
@@ -788,6 +822,7 @@ final class ScreenshotController {
                 hoveredID: hoveredID,
                 editingTextID: nil
             )
+            activeOverlay?.makeKeyAndOrderFront(nil)
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let origin = newTextOrigin else { return }
@@ -810,12 +845,13 @@ final class ScreenshotController {
     private func commitEditedText(_ text: String, id: UUID) {
         defer {
             editingTextID = nil
-                textEditor?.end()
+            textEditor?.end()
             activeOverlay?.updateSelectionState(
                 selectedID: document?.selectedID,
                 hoveredID: hoveredID,
                 editingTextID: nil
             )
+            activeOverlay?.makeKeyAndOrderFront(nil)
         }
         guard let document else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -841,6 +877,7 @@ final class ScreenshotController {
             hoveredID: hoveredID,
             editingTextID: nil
         )
+        activeOverlay?.makeKeyAndOrderFront(nil)
         refreshToolbar()
     }
 
@@ -966,6 +1003,7 @@ final class ScreenshotController {
             toolbar.onToolSelected = { [weak self] tool in self?.selectTool(tool) }
             toolbar.onUndo = { [weak self] in self?.undo() }
             toolbar.onRedo = { [weak self] in self?.redo() }
+            toolbar.onCopy = { [weak self] in self?.copySelectionToPasteboard() }
             toolbar.onCancel = { [weak self] in self?.cancelSession() }
             toolbar.onPin = { [weak self] in self?.pinSelection() }
             toolbar.onSave = { [weak self] in self?.saveSelection() }
@@ -1136,6 +1174,9 @@ final class ScreenshotController {
 
         if flags.contains(.command) {
             switch key {
+            case 8: // C
+                copySelectionToPasteboard()
+                return true
             case 6: // Z
                 if flags.contains(.shift) { redo() } else { undo() }
                 return true
@@ -1229,6 +1270,7 @@ final class ScreenshotController {
 
     private func hideChromeForModal() {
         if textEditor?.isVisible == true { textEditor?.commitNow() }
+        ColorPalettePanel.shared.dismissAll()
         for overlay in overlays { overlay.orderOut(nil) }
         hud?.hide()
         toolbar?.hideToolbar()
@@ -1270,15 +1312,32 @@ final class ScreenshotController {
         return result
     }
 
+    private func copySelectionToPasteboard() {
+        guard state == .editing, let document, let captured else { return }
+        document.rebuildFrozen()
+        let mosaicImages = prepareMosaicCache(document: document, captured: captured)
+        guard let image = ScreenshotComposer.composeSelection(
+            document: document,
+            capturedScreen: captured,
+            mosaicImages: mosaicImages
+        ) else {
+            return
+        }
+        guard ScreenshotPasteboard.copy(image: image) else { return }
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        statusBar?.showTransientTooltip("已复制到剪贴板")
+    }
+
     private func saveSelection() {
-        guard state == .editing, let document, let captured, let selection, let screen = activeScreen else { return }
+        guard state == .editing, let document, let captured else { return }
+        let pin = editingPin
         state = .saving
         hideChromeForModal()
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png, .jpeg]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = "截屏 \(Self.timestamp()).png"
+        panel.nameFieldStringValue = (pin == nil ? "截屏 " : "贴图 ") + "\(Self.timestamp()).png"
         panel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
 
         let response = panel.runModal()
@@ -1302,10 +1361,15 @@ final class ScreenshotController {
         }
         do {
             try Self.write(image: image, to: url)
-            _ = selection
-            _ = screen
-            cleanup(restoreApp: true)
-            statusBar?.showTransientTooltip("截图已保存")
+            if let pin {
+                let session = PinEditingSession(capturedScreen: captured, document: document)
+                pin.update(image: image, pointSize: document.selection.rect.size, editingSession: session)
+            }
+            cleanup(restoreApp: pin == nil)
+            if let pin {
+                presentPin(pin)
+            }
+            statusBar?.showTransientTooltip(pin == nil ? "截图已保存" : "贴图已保存并更新")
         } catch {
             state = .editing
             showChromeAfterModal()
@@ -1315,6 +1379,12 @@ final class ScreenshotController {
 
     private func pinSelection() {
         guard state == .editing, let document, let captured, let selection, let screen = activeScreen else { return }
+
+        if let pin = editingPin {
+            finishPinEditing(pin: pin, apply: true)
+            return
+        }
+
         document.rebuildFrozen()
         let mosaicImages = prepareMosaicCache(document: document, captured: captured)
         hideChromeForModal()
@@ -1328,7 +1398,13 @@ final class ScreenshotController {
             return
         }
 
-        let pin = PinnedImageWindow(image: image, pointSize: selection.rect.size, screenFrame: screen.frame)
+        let session = PinEditingSession(capturedScreen: captured, document: document)
+        let pin = PinnedImageWindow(
+            image: image,
+            pointSize: selection.rect.size,
+            screenFrame: screen.frame,
+            editingSession: session
+        )
         let origin = CGPoint(
             x: screen.frame.minX + selection.rect.minX,
             y: screen.frame.maxY - selection.rect.minY - selection.rect.height
@@ -1338,10 +1414,111 @@ final class ScreenshotController {
             guard let self, let pin else { return }
             self.pins.removeAll { $0 === pin }
         }
+        pin.onShowToolbar = { [weak self, weak pin] in
+            guard let self, let pin else { return }
+            self.beginEditing(pin: pin)
+        }
         pins.append(pin)
+
+        // Ownership of the capture and annotation document moves to the pin
+        // session. Detach them first so cleanup does not release the data the
+        // pin needs for "显示工具条".
+        document.onChange = nil
+        self.document = nil
+        self.captured = nil
+        cleanup(restoreApp: false)
+        presentPin(pin)
+        statusBar?.showTransientTooltip("贴图已固定，⌘C 复制")
+    }
+
+    private func beginEditing(pin: PinnedImageWindow) {
+        guard state == .idle else {
+            NSSound.beep()
+            return
+        }
+        if let canStart, !canStart() {
+            NSSound.beep()
+            return
+        }
+        guard let session = pin.editingSession else {
+            showError("无法继续编辑贴图", detail: "这张贴图没有保留原始截图数据。")
+            return
+        }
+        guard let screen = NSScreen.screens.first(where: { $0.frame.equalTo(session.screenFrame) }) else {
+            showError("无法继续编辑贴图", detail: "原截图所在的显示器已不可用，请重新截屏。")
+            return
+        }
+        guard session.capturedScreen.screenPointSize == screen.frame.size else {
+            showError("无法继续编辑贴图", detail: "原截图所在显示器的分辨率已变化，请重新截屏。")
+            return
+        }
+
+        let workingDocument = session.document.copyForEditing()
+        previousApp = NSWorkspace.shared.frontmostApplication
+        editingPin = pin
+        pin.orderOut(nil)
+
+        captured = session.capturedScreen
+        document = workingDocument
+        workingDocument.onChange = { [weak self] in self?.refreshAfterDocumentChange() }
+        selection = workingDocument.selection
+        mouseScreenLocal = CGPoint(
+            x: workingDocument.selection.rect.midX,
+            y: workingDocument.selection.rect.midY
+        )
+        tool = .pointer
+        dragMode = nil
+        previewAnnotation = nil
+        eraseStroke = nil
+        editingTextID = nil
+        hoveredID = nil
+        sessionScreenSignature = Self.screenSignature()
+        state = .editing
+
+        NSApp.activate(ignoringOtherApps: true)
+        installEventMonitor()
+        createChromeIfNeeded()
+        createOverlays()
+        activateScreen(screen)
+        refreshActiveOverlay()
+        showToolbar()
+        updateHUD()
+        onActiveChanged?(true)
+    }
+
+    private func finishPinEditing(pin: PinnedImageWindow, apply: Bool) {
+        var didApply = !apply
+        if apply, let document, let captured {
+            document.rebuildFrozen()
+            let mosaicImages = prepareMosaicCache(document: document, captured: captured)
+            if let image = ScreenshotComposer.composeSelection(
+                document: document,
+                capturedScreen: captured,
+                mosaicImages: mosaicImages
+            ) {
+                let session = PinEditingSession(capturedScreen: captured, document: document)
+                pin.update(
+                    image: image,
+                    pointSize: document.selection.rect.size,
+                    editingSession: session
+                )
+                didApply = true
+            }
+        }
+        cleanup(restoreApp: !apply)
+        if apply {
+            presentPin(pin)
+        }
+        if apply {
+            statusBar?.showTransientTooltip(didApply ? "贴图已更新，⌘C 复制" : "无法生成贴图图像")
+        } else {
+            statusBar?.showTransientTooltip("已取消编辑")
+        }
+    }
+
+    private func presentPin(_ pin: PinnedImageWindow) {
         pin.orderFrontRegardless()
-        cleanup(restoreApp: true)
-        statusBar?.showTransientTooltip("已贴图")
+        pin.focusForKeyboard()
     }
 
     private func showError(_ title: String, detail: String) {

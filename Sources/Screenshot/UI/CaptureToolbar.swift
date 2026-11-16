@@ -4,6 +4,7 @@ final class CaptureToolbar: NSPanel {
     var onToolSelected: ((CaptureTool) -> Void)?
     var onUndo: (() -> Void)?
     var onRedo: (() -> Void)?
+    var onCopy: (() -> Void)?
     var onCancel: (() -> Void)?
     var onPin: (() -> Void)?
     var onSave: (() -> Void)?
@@ -27,20 +28,20 @@ final class CaptureToolbar: NSPanel {
     private var undoButton: NSButton!
     private var redoButton: NSButton!
 
-    private let rectColorWell = NSColorWell()
+    private let rectSwatch = ColorSwatchButton()
     private let rectWidthSlider = NSSlider()
     private let rectWidthLabel = NSTextField(labelWithString: "")
     private let rectMosaicSlider = NSSlider()
     private let rectMosaicLabel = NSTextField(labelWithString: "")
 
-    private let lineColorWell = NSColorWell()
+    private let lineSwatch = ColorSwatchButton()
     private let lineWidthSlider = NSSlider()
     private let lineWidthLabel = NSTextField(labelWithString: "")
     private let linePatternPopup = NSPopUpButton()
     private let startArrowPopup = NSPopUpButton()
     private let endArrowPopup = NSPopUpButton()
 
-    private let textColorWell = NSColorWell()
+    private let textSwatch = ColorSwatchButton()
     private let fontPopup = NSPopUpButton()
     private let fontSizeSlider = NSSlider()
     private let fontSizeLabel = NSTextField(labelWithString: "")
@@ -65,7 +66,7 @@ final class CaptureToolbar: NSPanel {
         hasShadow = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        becomesKeyOnlyIfNeeded = true
+        becomesKeyOnlyIfNeeded = false
         animationBehavior = .none
         buildUI()
         orderOut(nil)
@@ -74,6 +75,9 @@ final class CaptureToolbar: NSPanel {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 
     func refresh(document: ScreenshotDocument?, tool: CaptureTool, defaults: ScreenshotDefaults) {
         isRefreshing = true
@@ -99,14 +103,14 @@ final class CaptureToolbar: NSPanel {
             switch selected.kind {
             case .rectangle(let shape):
                 row = rectRow
-                rectColorWell.color = selected.color.nsColor
+                rectSwatch.swatchColor = selected.color
                 rectWidthSlider.doubleValue = Double(selected.lineWidth)
                 rectWidthLabel.stringValue = String(format: "%.0f", selected.lineWidth)
                 rectMosaicSlider.doubleValue = Double(shape.mosaic)
                 rectMosaicLabel.stringValue = String(format: "%.0f", shape.mosaic)
             case .line(let shape):
                 row = lineRow
-                lineColorWell.color = selected.color.nsColor
+                lineSwatch.swatchColor = selected.color
                 lineWidthSlider.doubleValue = Double(selected.lineWidth)
                 lineWidthLabel.stringValue = String(format: "%.0f", selected.lineWidth)
                 selectPopup(linePatternPopup, value: shape.pattern.rawValue)
@@ -114,21 +118,21 @@ final class CaptureToolbar: NSPanel {
                 selectPopup(endArrowPopup, value: shape.endArrow.rawValue)
             case .text(let shape):
                 row = textRow
-                textColorWell.color = selected.color.nsColor
+                textSwatch.swatchColor = selected.color
                 selectFont(shape.fontName)
                 fontSizeSlider.doubleValue = Double(shape.fontSize)
                 fontSizeLabel.stringValue = String(format: "%.0f", shape.fontSize)
             }
         } else if tool == .rectangle {
             row = rectRow
-            rectColorWell.color = defaults.rectangleColor.nsColor
+            rectSwatch.swatchColor = defaults.rectangleColor
             rectWidthSlider.doubleValue = Double(defaults.rectangleWidth)
             rectWidthLabel.stringValue = String(format: "%.0f", defaults.rectangleWidth)
             rectMosaicSlider.doubleValue = Double(defaults.rectangleMosaic)
             rectMosaicLabel.stringValue = String(format: "%.0f", defaults.rectangleMosaic)
         } else if tool == .line {
             row = lineRow
-            lineColorWell.color = defaults.lineColor.nsColor
+            lineSwatch.swatchColor = defaults.lineColor
             lineWidthSlider.doubleValue = Double(defaults.lineWidth)
             lineWidthLabel.stringValue = String(format: "%.0f", defaults.lineWidth)
             selectPopup(linePatternPopup, value: defaults.linePattern.rawValue)
@@ -136,7 +140,7 @@ final class CaptureToolbar: NSPanel {
             selectPopup(endArrowPopup, value: defaults.lineEndArrow.rawValue)
         } else if tool == .text {
             row = textRow
-            textColorWell.color = defaults.textColor.nsColor
+            textSwatch.swatchColor = defaults.textColor
             selectFont(defaults.textFontName)
             fontSizeSlider.doubleValue = Double(defaults.textFontSize)
             fontSizeLabel.stringValue = String(format: "%.0f", defaults.textFontSize)
@@ -250,19 +254,23 @@ final class CaptureToolbar: NSPanel {
         let pin = makeIconButton(symbol: "pin", tooltip: "贴图")
         pin.target = self
         pin.action = #selector(pinAction)
+        let copy = makeIconButton(symbol: "doc.on.doc", tooltip: "复制图片 (⌘C)")
+        copy.target = self
+        copy.action = #selector(copyAction)
         let save = makeIconButton(symbol: "square.and.arrow.down", tooltip: "保存截图 (⌘S)")
         save.target = self
         save.action = #selector(saveAction)
         save.contentTintColor = .systemBlue
         mainRow.addArrangedSubview(cancel)
         mainRow.addArrangedSubview(pin)
+        mainRow.addArrangedSubview(copy)
         mainRow.addArrangedSubview(save)
     }
 
     private func buildRectRow() {
-        configureColorWell(rectColorWell, action: #selector(rectColorAction))
+        configureSwatch(rectSwatch) { [weak self] in self?.showPalette(for: .rectangle) }
         rectRow.addArrangedSubview(label("颜色"))
-        rectRow.addArrangedSubview(rectColorWell)
+        rectRow.addArrangedSubview(rectSwatch)
         rectRow.addArrangedSubview(separator())
         rectRow.addArrangedSubview(label("粗细"))
         configureSlider(rectWidthSlider, min: 1, max: 30, action: #selector(rectWidthAction))
@@ -278,9 +286,9 @@ final class CaptureToolbar: NSPanel {
     }
 
     private func buildLineRow() {
-        configureColorWell(lineColorWell, action: #selector(lineColorAction))
+        configureSwatch(lineSwatch) { [weak self] in self?.showPalette(for: .line) }
         lineRow.addArrangedSubview(label("颜色"))
-        lineRow.addArrangedSubview(lineColorWell)
+        lineRow.addArrangedSubview(lineSwatch)
         lineRow.addArrangedSubview(separator())
         lineRow.addArrangedSubview(label("粗细"))
         configureSlider(lineWidthSlider, min: 1, max: 30, action: #selector(lineWidthAction))
@@ -297,9 +305,9 @@ final class CaptureToolbar: NSPanel {
     }
 
     private func buildTextRow() {
-        configureColorWell(textColorWell, action: #selector(textColorAction))
+        configureSwatch(textSwatch) { [weak self] in self?.showPalette(for: .text) }
         textRow.addArrangedSubview(label("颜色"))
-        textRow.addArrangedSubview(textColorWell)
+        textRow.addArrangedSubview(textSwatch)
         textRow.addArrangedSubview(separator())
         textRow.addArrangedSubview(label("字体"))
         fontPopup.target = self
@@ -381,12 +389,11 @@ final class CaptureToolbar: NSPanel {
         slider.widthAnchor.constraint(equalToConstant: 82).isActive = true
     }
 
-    private func configureColorWell(_ well: NSColorWell, action: Selector) {
-        well.target = self
-        well.action = action
-        well.translatesAutoresizingMaskIntoConstraints = false
-        well.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        well.heightAnchor.constraint(equalToConstant: 22).isActive = true
+    private func configureSwatch(_ button: ColorSwatchButton, action: @escaping () -> Void) {
+        button.onClick = action
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 22).isActive = true
     }
 
     private func configurePopup(_ popup: NSPopUpButton, items: [(String, String)], action: Selector) {
@@ -430,19 +437,22 @@ final class CaptureToolbar: NSPanel {
         fontPopup.selectItem(at: 0)
     }
 
-    private func selectedRectColor() -> RGBAColor {
-        let color = rectColorWell.color.usingColorSpace(.sRGB) ?? .red
-        return RGBAColor(color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent)
+    private enum ColorTarget {
+        case rectangle, line, text
     }
 
-    private func selectedLineColor() -> RGBAColor {
-        let color = lineColorWell.color.usingColorSpace(.sRGB) ?? .red
-        return RGBAColor(color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent)
-    }
-
-    private func selectedTextColor() -> RGBAColor {
-        let color = textColorWell.color.usingColorSpace(.sRGB) ?? .red
-        return RGBAColor(color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent)
+    private func showPalette(for target: ColorTarget) {
+        guard !isRefreshing else { return }
+        let button: ColorSwatchButton
+        switch target {
+        case .rectangle: button = rectSwatch
+        case .line: button = lineSwatch
+        case .text: button = textSwatch
+        }
+        ColorPalettePanel.shared.show(anchor: button, current: button.swatchColor) { [weak self] color in
+            guard let self, !self.isRefreshing else { return }
+            self.onColorChanged?(color)
+        }
     }
 
     // MARK: - Actions
@@ -454,24 +464,10 @@ final class CaptureToolbar: NSPanel {
 
     @objc private func undoAction() { guard !isRefreshing else { return }; onUndo?() }
     @objc private func redoAction() { guard !isRefreshing else { return }; onRedo?() }
+    @objc private func copyAction() { guard !isRefreshing else { return }; onCopy?() }
     @objc private func cancelAction() { guard !isRefreshing else { return }; onCancel?() }
     @objc private func pinAction() { guard !isRefreshing else { return }; onPin?() }
     @objc private func saveAction() { guard !isRefreshing else { return }; onSave?() }
-
-    @objc private func rectColorAction() {
-        guard !isRefreshing else { return }
-        onColorChanged?(selectedRectColor())
-    }
-
-    @objc private func lineColorAction() {
-        guard !isRefreshing else { return }
-        onColorChanged?(selectedLineColor())
-    }
-
-    @objc private func textColorAction() {
-        guard !isRefreshing else { return }
-        onColorChanged?(selectedTextColor())
-    }
 
     @objc private func rectWidthAction() {
         guard !isRefreshing else { return }

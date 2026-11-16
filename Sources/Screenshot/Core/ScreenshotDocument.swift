@@ -135,6 +135,21 @@ final class ScreenshotDocument {
         onChange?()
     }
 
+    /// Creates an independent document for re-editing a pinned image. The
+    /// pin keeps the original document (and its rendered bitmap) untouched
+    /// until the user applies the edit, so cancelling cannot mutate the pin.
+    func copyForEditing() -> ScreenshotDocument {
+        let copy = ScreenshotDocument(selection: selection, workingScale: workingScale, baseImage: baseImage)
+        copy.annotations = annotations
+        copy.frozenAnnotations = frozenAnnotations
+        copy.eraseStrokes = eraseStrokes
+        copy.selectedID = nil
+        copy.undoStack = undoStack
+        copy.redoStack = redoStack
+        copy.rebuildFrozen()
+        return copy
+    }
+
     func setSelected(_ id: UUID?) {
         selectedID = id
         onChange?()

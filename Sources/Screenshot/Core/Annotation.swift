@@ -315,13 +315,15 @@ struct Annotation: Identifiable, Equatable {
         return CGPoint(x: topRight.x + 22, y: topRight.y - 22)
     }
 
-    /// Rotation affordance for rectangles. Kept further along the local "up"
-    /// direction so it is clearly separate from the delete button.
+    /// Rotation affordance for rectangles. It sits outside the top-left corner
+    /// in the rectangle's own rotated space, so it never collides with the
+    /// delete button at the top-right or the corner resize handles.
     func rotationHandlePoint() -> CGPoint? {
         guard case .rectangle(let shape) = kind else { return nil }
-        let topRight = shape.localToScreen(CGPoint(x: shape.halfWidth, y: -shape.halfHeight))
-        let up = CGPoint(x: sin(shape.angle), y: -cos(shape.angle))
-        return CGPoint(x: topRight.x + up.x * 36, y: topRight.y + up.y * 36)
+        return shape.localToScreen(CGPoint(
+            x: -shape.halfWidth - 22,
+            y: -shape.halfHeight - 22
+        ))
     }
 
     mutating func move(by delta: CGPoint) {
