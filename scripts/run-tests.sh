@@ -20,6 +20,7 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
   Sources/Shared/MenuModel.swift \
   Sources/Shared/MoveEngine.swift \
   Sources/Screenshot/Core/Annotation.swift \
+  Sources/Screenshot/Core/AnnotationSpace.swift \
   Sources/Screenshot/Core/AnnotationRenderer.swift \
   Sources/Screenshot/Core/CaptureSelection.swift \
   Sources/Screenshot/Core/CapturedScreen.swift \

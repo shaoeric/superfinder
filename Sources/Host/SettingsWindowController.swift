@@ -10,7 +10,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         target: nil,
         action: nil
     )
-    private let versionLabel = NSTextField(labelWithString: "版本 1.1.1 · 本地 ad-hoc 签名")
+    private let versionLabel = NSTextField(labelWithString: "版本 1.1.2 · 本地 ad-hoc 签名")
     private let screenRecordingLabel = NSTextField(labelWithString: "")
 
     var onStartScreenshot: (() -> Void)?

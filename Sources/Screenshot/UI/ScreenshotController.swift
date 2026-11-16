@@ -180,6 +180,14 @@ final class ScreenshotController {
 
     private func ensureScreenRecordingPermission() -> Bool {
         if ScreenRecordingPermission.isGranted { return true }
+        log.error("Screen recording permission is not granted; requesting it once")
+
+        // Asking once registers SuperFinder in the Screen Recording list and
+        // shows the system prompt on a first run. If the user already answered
+        // "don't allow", macOS returns false immediately and only the system
+        // settings toggle can change it, so the alert below explains that path.
+        _ = ScreenRecordingPermission.request()
+        if ScreenRecordingPermission.isGranted { return true }
 
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -372,6 +380,17 @@ final class ScreenshotController {
         }
 
         guard state == .editing, let document, let selection else { return }
+        let annotationLocal = annotationPoint(fromScreenLocal: local)
+
+        // Resize handles sit on (and just outside) the selection border, so the
+        // handle test must run before the "outside the selection" early return.
+        if tool == .pointer, let handle = selection.handle(at: local) {
+            dragMode = .resizeSelection(handle)
+            dragStartPoint = local
+            dragLastPoint = local
+            return
+        }
+
         if !selection.contains(local) && tool == .pointer {
             // Clicking outside the selection simply clears annotation selection.
             document.setSelected(nil)
@@ -384,94 +403,104 @@ final class ScreenshotController {
 
         switch tool {
         case .pointer:
-            handlePointerDown(local: local, event: event, document: document)
+            handlePointerDown(
+                screenLocal: local,
+                annotationLocal: annotationLocal,
+                event: event,
+                document: document
+            )
         case .text:
-            if let hit = document.hitAnnotation(at: local) {
+            if let hit = document.hitAnnotation(at: annotationLocal) {
                 if case .text = hit.kind {
                     beginEditingText(annotation: hit)
                     return
                 }
             }
             guard selection.contains(local) else { return }
-            beginNewText(at: local)
+            beginNewText(at: annotationLocal)
         case .eraser:
             guard selection.contains(local) else { return }
-            beginErase(at: local)
+            beginErase(at: annotationLocal)
         case .rectangle:
             guard selection.contains(local) else { return }
-            beginNewRectangle(at: local)
+            beginNewRectangle(at: annotationLocal)
         case .line:
             guard selection.contains(local) else { return }
-            beginNewLine(at: local)
+            beginNewLine(at: annotationLocal)
         }
     }
 
-    private func handlePointerDown(local: CGPoint, event: NSEvent, document: ScreenshotDocument) {
+    private func handlePointerDown(
+        screenLocal: CGPoint,
+        annotationLocal: CGPoint,
+        event: NSEvent,
+        document: ScreenshotDocument
+    ) {
         if let selected = document.selectedAnnotation {
-            if hypot(local.x - selected.deleteHandlePoint().x, local.y - selected.deleteHandlePoint().y) <= 12 {
+            if hypot(annotationLocal.x - selected.deleteHandlePoint().x, annotationLocal.y - selected.deleteHandlePoint().y) <= 12 {
                 document.removeSelected()
                 refreshAfterDocumentChange()
                 return
             }
             if let rotation = selected.rotationHandlePoint(),
-               hypot(local.x - rotation.x, local.y - rotation.y) <= 13 {
+               hypot(annotationLocal.x - rotation.x, annotationLocal.y - rotation.y) <= 13 {
                 if case .rectangle(let shape) = selected.kind {
                     let center = shape.center
-                    let startAngle = atan2(local.y - center.y, local.x - center.x)
+                    let startAngle = atan2(annotationLocal.y - center.y, annotationLocal.x - center.x)
                     dragMode = .rotateAnnotation(selected.id, center, shape.angle - startAngle)
-                    dragStartPoint = local
-                    dragLastPoint = local
+                    dragStartPoint = screenLocal
+                    dragLastPoint = screenLocal
                     dragHistoryPushed = false
                 }
                 return
             }
             for (index, handle) in selected.handlesForEditing().enumerated() {
-                if hypot(local.x - handle.x, local.y - handle.y) <= 10 {
+                if hypot(annotationLocal.x - handle.x, annotationLocal.y - handle.y) <= 10 {
                     document.beginChange()
                     dragMode = .resizeAnnotation(selected.id, index)
-                    dragStartPoint = local
-                    dragLastPoint = local
+                    dragStartPoint = screenLocal
+                    dragLastPoint = screenLocal
                     dragHistoryPushed = true
                     return
                 }
             }
-            if selected.hitTest(local) {
+            if selected.hitTest(annotationLocal) {
                 document.setSelected(selected.id)
                 dragMode = .moveAnnotation(selected.id)
-                dragStartPoint = local
-                dragLastPoint = local
+                dragStartPoint = screenLocal
+                dragLastPoint = screenLocal
                 dragHistoryPushed = false
                 activeOverlay?.updateSelectionState(selectedID: selected.id, hoveredID: nil, editingTextID: nil)
                 return
             }
         }
 
-        if selection?.handle(at: local) != nil, let handle = selection?.handle(at: local) {
+        if let handle = selection?.handle(at: screenLocal) {
             dragMode = .resizeSelection(handle)
-            dragStartPoint = local
-            dragLastPoint = local
+            dragStartPoint = screenLocal
+            dragLastPoint = screenLocal
             return
         }
 
-        if let hit = document.hitAnnotation(at: local) {
+        if let hit = document.hitAnnotation(at: annotationLocal) {
             document.setSelected(hit.id)
             if event.clickCount >= 2, case .text = hit.kind {
                 beginEditingText(annotation: hit)
                 return
             }
             dragMode = .moveAnnotation(hit.id)
-            dragStartPoint = local
-            dragLastPoint = local
+            dragStartPoint = screenLocal
+            dragLastPoint = screenLocal
             dragHistoryPushed = false
             activeOverlay?.updateSelectionState(selectedID: hit.id, hoveredID: nil, editingTextID: nil)
             refreshToolbar()
             return
         }
 
-        if selection?.contains(local) == true {
+        if selection?.contains(screenLocal) == true {
             dragMode = .moveSelection
-            dragStartPoint = local
-            dragLastPoint = local
+            dragStartPoint = screenLocal
+            dragLastPoint = screenLocal
         }
     }
 
@@ -482,6 +511,7 @@ final class ScreenshotController {
         defer { dragLastPoint = local }
 
         guard let dragMode else { return }
+        let annotationLocal = annotationPoint(fromScreenLocal: local)
         switch dragMode {
         case .selecting:
             let updated = CaptureSelection(anchor: dragStartPoint, current: local)
@@ -514,10 +544,10 @@ final class ScreenshotController {
             guard var annotation = previewAnnotation, annotation.id == id,
                   case .rectangle(var shape) = annotation.kind else { return }
             let rect = CGRect(
-                x: min(dragStartPoint.x, local.x),
-                y: min(dragStartPoint.y, local.y),
-                width: abs(local.x - dragStartPoint.x),
-                height: abs(local.y - dragStartPoint.y)
+                x: min(dragStartPoint.x, annotationLocal.x),
+                y: min(dragStartPoint.y, annotationLocal.y),
+                width: abs(annotationLocal.x - dragStartPoint.x),
+                height: abs(annotationLocal.y - dragStartPoint.y)
             )
             shape.center = CGPoint(x: rect.midX, y: rect.midY)
             shape.size = rect.size
@@ -529,7 +559,7 @@ final class ScreenshotController {
         case .createLine(let id):
             guard var annotation = previewAnnotation, annotation.id == id,
                   case .line(var shape) = annotation.kind else { return }
-            shape.end = local
+            shape.end = annotationLocal
             annotation.kind = .line(shape)
             previewAnnotation = annotation
             activeOverlay?.showPreview(annotation: annotation)
@@ -559,7 +589,7 @@ final class ScreenshotController {
                 document.beginChange()
                 dragHistoryPushed = true
             }
-            var angle = atan2(local.y - center.y, local.x - center.x) + offset
+            var angle = atan2(annotationLocal.y - center.y, annotationLocal.x - center.x) + offset
             if event.modifierFlags.contains(.shift) {
                 let step = CGFloat.pi / 12
                 angle = (angle / step).rounded() * step
@@ -567,10 +597,10 @@ final class ScreenshotController {
             document.rotateAnnotation(id: id, angle: angle)
 
         case .erase:
-            var stroke = eraseStroke ?? EraseStroke(points: [local], brushSize: defaults.eraserSize, shape: defaults.eraserShape)
-            let last = stroke.points.last ?? local
-            if hypot(local.x - last.x, local.y - last.y) >= max(1, defaults.eraserSize / 8) {
-                stroke.points.append(local)
+            var stroke = eraseStroke ?? EraseStroke(points: [annotationLocal], brushSize: defaults.eraserSize, shape: defaults.eraserShape)
+            let last = stroke.points.last ?? annotationLocal
+            if hypot(annotationLocal.x - last.x, annotationLocal.y - last.y) >= max(1, defaults.eraserSize / 8) {
+                stroke.points.append(annotationLocal)
                 eraseStroke = stroke
                 activeOverlay?.showErasePreview(stroke: stroke)
                 activeOverlay?.showBrushCursor(at: local, size: defaults.eraserSize, shape: defaults.eraserShape)
@@ -642,7 +672,6 @@ final class ScreenshotController {
         let document = ScreenshotDocument(
             selection: selection,
             workingScale: captured.workingScale,
-            selectionOrigin: selection.rect.origin,
             baseImage: captured.image
         )
         document.onChange = { [weak self] in
@@ -706,7 +735,7 @@ final class ScreenshotController {
     }
 
     private func beginNewText(at point: CGPoint) {
-        guard let screen = activeScreen, let selection, let captured else { return }
+        guard let screen = activeScreen, let selection else { return }
         editingTextID = nil
         newTextOrigin = point
         textEditor?.begin(
@@ -714,15 +743,14 @@ final class ScreenshotController {
             fontName: defaults.textFontName,
             fontSize: defaults.textFontSize,
             color: defaults.textColor.nsColor,
-            screenPoint: CGPoint(x: selection.rect.origin.x + point.x, y: selection.rect.origin.y + point.y),
+            screenPoint: AnnotationSpace.screen(fromLocal: point, selection: selection.rect),
             screenFrame: screen.frame,
-            maxWidth: max(80, selection.rect.maxX - point.x)
+            maxWidth: max(80, selection.rect.width - point.x)
         ) { [weak self] text in
             self?.commitNewText(text)
         } onCancel: { [weak self] in
             self?.cancelTextEditing()
         }
-        _ = captured
     }
 
     private func beginEditingText(annotation: Annotation) {
@@ -739,10 +767,7 @@ final class ScreenshotController {
             fontName: shape.fontName,
             fontSize: shape.fontSize,
             color: annotation.color.nsColor,
-            screenPoint: CGPoint(
-                x: selection.rect.origin.x + shape.origin.x,
-                y: selection.rect.origin.y + shape.origin.y
-            ),
+            screenPoint: AnnotationSpace.screen(fromLocal: shape.origin, selection: selection.rect),
             screenFrame: screen.frame,
             maxWidth: max(80, selection.rect.maxX - shape.origin.x)
         ) { [weak self] text in
@@ -826,8 +851,9 @@ final class ScreenshotController {
             updateCursor(at: point)
             return
         }
+        let annotationLocal = annotationPoint(fromScreenLocal: point)
         if tool == .pointer {
-            hoveredID = document.hitAnnotation(at: point)?.id
+            hoveredID = document.hitAnnotation(at: annotationLocal)?.id
         } else {
             hoveredID = nil
         }
@@ -841,9 +867,10 @@ final class ScreenshotController {
 
     private func updateCursor(at point: CGPoint) {
         guard let document, let selection else {
-            activeOverlay?.desiredCursor = tool == .eraser ? .crosshair : .crosshair
+            activeOverlay?.desiredCursor = .crosshair
             return
         }
+        let annotationLocal = annotationPoint(fromScreenLocal: point)
         var cursor: NSCursor = .crosshair
         switch tool {
         case .eraser:
@@ -852,22 +879,22 @@ final class ScreenshotController {
             cursor = .crosshair
         case .pointer:
             if let selected = document.selectedAnnotation {
-                if hypot(point.x - selected.deleteHandlePoint().x, point.y - selected.deleteHandlePoint().y) <= 12 {
+                if hypot(annotationLocal.x - selected.deleteHandlePoint().x, annotationLocal.y - selected.deleteHandlePoint().y) <= 12 {
                     cursor = .pointingHand
                 } else if let rotation = selected.rotationHandlePoint(),
-                          hypot(point.x - rotation.x, point.y - rotation.y) <= 13 {
+                          hypot(annotationLocal.x - rotation.x, annotationLocal.y - rotation.y) <= 13 {
                     cursor = .pointingHand
-                } else if let handle = nearestHandle(of: selected, to: point) {
+                } else if let handle = nearestHandle(of: selected, to: annotationLocal) {
                     cursor = cursorFor(handle: handle.index, selection: false)
                     _ = handle
-                } else if selected.hitTest(point) {
+                } else if selected.hitTest(annotationLocal) {
                     cursor = .openHand
                 } else if selection.contains(point) {
                     cursor = .arrow
                 }
             } else if let handle = selection.handle(at: point) {
                 cursor = cursorFor(handle: handle, selection: true)
-            } else if document.hitAnnotation(at: point) != nil {
+            } else if document.hitAnnotation(at: annotationLocal) != nil {
                 cursor = .pointingHand
             } else if selection.contains(point) {
                 cursor = .openHand
@@ -1224,9 +1251,10 @@ final class ScreenshotController {
         var result: [UUID: CGImage] = [:]
         for annotation in document.annotations {
             guard case .rectangle(let shape) = annotation.kind, shape.mosaic > 0 else { continue }
+            let center = AnnotationSpace.screen(fromLocal: shape.center, selection: document.selection.rect)
             let screenRect = CGRect(
-                x: document.selectionOrigin.x + shape.center.x - shape.size.width / 2,
-                y: document.selectionOrigin.y + shape.center.y - shape.size.height / 2,
+                x: center.x - shape.size.width / 2,
+                y: center.y - shape.size.height / 2,
                 width: shape.size.width,
                 height: shape.size.height
             )
@@ -1327,6 +1355,11 @@ final class ScreenshotController {
     }
 
     // MARK: - Helpers
+
+    private func annotationPoint(fromScreenLocal point: CGPoint) -> CGPoint {
+        guard let selection else { return point }
+        return AnnotationSpace.local(fromScreen: point, selection: selection.rect)
+    }
 
     private func localPoint(for screen: NSScreen, global: CGPoint) -> CGPoint {
         CGPoint(x: global.x - screen.frame.minX, y: screen.frame.maxY - global.y)

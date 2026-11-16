@@ -154,9 +154,11 @@ enum AnnotationRenderer {
         if shape.mosaic > 0 {
             var mosaic = mosaicImage
             if mosaic == nil, let baseImage {
+                let selectionRect = CGRect(origin: selectionOrigin, size: .zero)
+                let center = AnnotationSpace.screen(fromLocal: shape.center, selection: selectionRect)
                 let screenRect = CGRect(
-                    x: selectionOrigin.x + shape.center.x - shape.size.width / 2,
-                    y: selectionOrigin.y + shape.center.y - shape.size.height / 2,
+                    x: center.x - shape.size.width / 2,
+                    y: center.y - shape.size.height / 2,
                     width: shape.size.width,
                     height: shape.size.height
                 )

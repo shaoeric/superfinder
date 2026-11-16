@@ -272,8 +272,13 @@ final class CaptureOverlayView: NSView {
 
     func showPreview(annotation: Annotation?) {
         previewRoot.sublayers?.forEach { $0.removeFromSuperlayer() }
-        guard let annotation, let document else { return }
-        let layers = makeVisualLayers(for: annotation, document: document, preview: true)
+        guard let annotation, let document, let selection else { return }
+        let layers = makeVisualLayers(
+            for: annotation,
+            document: document,
+            selectionOrigin: selection.rect.origin,
+            preview: true
+        )
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for layer in layers {
@@ -388,27 +393,34 @@ final class CaptureOverlayView: NSView {
 
     private func rebuildAnnotationLayers() {
         annotationRoot.sublayers?.forEach { $0.removeFromSuperlayer() }
-        guard let document, active else { return }
+        guard let document, active, let selection else { return }
         for annotation in document.annotations {
             if annotation.id == editingTextID { continue }
-            for layer in makeVisualLayers(for: annotation, document: document, preview: false) {
+            for layer in makeVisualLayers(
+                for: annotation,
+                document: document,
+                selectionOrigin: selection.rect.origin,
+                preview: false
+            ) {
                 annotationRoot.addSublayer(layer)
             }
         }
     }
 
-    private func makeVisualLayers(for annotation: Annotation, document: ScreenshotDocument, preview: Bool) -> [CALayer] {
+    private func makeVisualLayers(
+        for annotation: Annotation,
+        document: ScreenshotDocument,
+        selectionOrigin: CGPoint,
+        preview: Bool
+    ) -> [CALayer] {
         guard let captured = capturedScreen else { return [] }
-        let selectionOrigin = document.selectionOrigin
         let scale = captured.workingScale
         var layers: [CALayer] = []
 
         switch annotation.kind {
         case .rectangle(let shape):
-            let screenCenter = CGPoint(
-                x: selectionOrigin.x + shape.center.x,
-                y: selectionOrigin.y + shape.center.y
-            )
+            let selectionRect = CGRect(origin: selectionOrigin, size: document.selection.rect.size)
+            let screenCenter = AnnotationSpace.screen(fromLocal: shape.center, selection: selectionRect)
             if shape.mosaic > 0,
                let baseImage = captured.image,
                let mosaic = MosaicRenderer.pixelatedImage(
@@ -440,7 +452,7 @@ final class CaptureOverlayView: NSView {
 
             let path = CGMutablePath()
             let corners = shape.corners.map {
-                viewPoint(forScreenPoint: CGPoint(x: selectionOrigin.x + $0.x, y: selectionOrigin.y + $0.y))
+                viewPoint(forScreenPoint: AnnotationSpace.screen(fromLocal: $0, selection: selectionRect))
             }
             path.addLines(between: corners)
             path.closeSubpath()
@@ -454,8 +466,9 @@ final class CaptureOverlayView: NSView {
             layers.append(outline)
 
         case .line(let shape):
-            let start = viewPoint(forScreenPoint: CGPoint(x: selectionOrigin.x + shape.start.x, y: selectionOrigin.y + shape.start.y))
-            let end = viewPoint(forScreenPoint: CGPoint(x: selectionOrigin.x + shape.end.x, y: selectionOrigin.y + shape.end.y))
+            let selectionRect = CGRect(origin: selectionOrigin, size: document.selection.rect.size)
+            let start = viewPoint(forScreenPoint: AnnotationSpace.screen(fromLocal: shape.start, selection: selectionRect))
+            let end = viewPoint(forScreenPoint: AnnotationSpace.screen(fromLocal: shape.end, selection: selectionRect))
             let linePath = CGMutablePath()
             linePath.move(to: start)
             linePath.addLine(to: end)
@@ -486,7 +499,8 @@ final class CaptureOverlayView: NSView {
 
         case .text(let shape):
             let size = TextLayout.size(text: shape.text, fontName: shape.fontName, fontSize: shape.fontSize)
-            let screenOrigin = CGPoint(x: selectionOrigin.x + shape.origin.x, y: selectionOrigin.y + shape.origin.y)
+            let selectionRect = CGRect(origin: selectionOrigin, size: document.selection.rect.size)
+            let screenOrigin = AnnotationSpace.screen(fromLocal: shape.origin, selection: selectionRect)
             let frame = viewRect(forScreenRect: CGRect(origin: screenOrigin, size: size))
             let textLayer = CATextLayer()
             textLayer.frame = frame
@@ -523,7 +537,7 @@ final class CaptureOverlayView: NSView {
             let handlePath = CGMutablePath()
             for (_, center) in selection.handleCenters {
                 let p = viewPoint(forScreenPoint: center)
-                handlePath.addEllipse(in: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
+                handlePath.addEllipse(in: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
             }
             let handles = CAShapeLayer()
             handles.frame = bounds
@@ -538,7 +552,7 @@ final class CaptureOverlayView: NSView {
             addSelectionChrome(for: annotation, document: document)
         } else if let hoveredID, let annotation = document.annotations.first(where: { $0.id == hoveredID }) {
             let points = annotation.selectionOutlinePoints().map {
-                viewPoint(forScreenPoint: CGPoint(x: selection.rect.origin.x + $0.x, y: selection.rect.origin.y + $0.y))
+                viewPoint(forScreenPoint: AnnotationSpace.screen(fromLocal: $0, selection: selection.rect))
             }
             let path = CGMutablePath()
             path.addLines(between: points)

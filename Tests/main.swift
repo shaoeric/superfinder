@@ -381,6 +381,13 @@ do {
     check(selection.handle(at: CGPoint(x: 50, y: 80)) == .topLeft, "top-left handle hit")
     selection.resize(handle: .bottomRight, by: CGPoint(x: 10, y: 5), within: CGRect(x: 0, y: 0, width: 300, height: 300))
     checkEqual(selection.rect, CGRect(x: 50, y: 80, width: 60, height: 25), "selection resize")
+    let handles = CaptureSelection(rect: CGRect(x: 100, y: 100, width: 200, height: 100))
+    check(handles.handle(at: CGPoint(x: 200, y: 100)) == .top, "whole top edge is a resize target")
+    check(handles.handle(at: CGPoint(x: 100, y: 150)) == .left, "whole left edge is a resize target")
+    check(handles.handle(at: CGPoint(x: 300, y: 150)) == .right, "whole right edge is a resize target")
+    check(handles.handle(at: CGPoint(x: 200, y: 200)) == .bottom, "whole bottom edge is a resize target")
+    check(handles.handle(at: CGPoint(x: 296, y: 196)) == .bottomRight, "corner gets a generous hit target")
+    check(handles.handle(at: CGPoint(x: 200, y: 160)) == nil, "selection interior is not a handle")
     selection.move(by: CGPoint(x: -100, y: -100), within: CGRect(x: 0, y: 0, width: 300, height: 300))
     checkEqual(selection.rect.origin, CGPoint(x: 0, y: 0), "selection move clamps to screen")
 }
@@ -414,7 +421,7 @@ do {
         workingScale: 1
     )
     let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 200, height: 120))
-    let document = ScreenshotDocument(selection: selection, workingScale: 1, selectionOrigin: .zero, baseImage: captured.image)
+    let document = ScreenshotDocument(selection: selection, workingScale: 1,  baseImage: captured.image)
     document.add(Annotation(kind: .line(LineShape(
         start: CGPoint(x: 20, y: 60),
         end: CGPoint(x: 180, y: 60),
@@ -445,6 +452,77 @@ do {
     checkEqual(document.frozenAnnotations.count, 1, "redo restores frozen line")
 }
 
+// MARK: - Annotation coordinate space
+
+do {
+    let selection = CGRect(x: 300, y: 200, width: 400, height: 300)
+    let local = AnnotationSpace.local(fromScreen: CGPoint(x: 350, y: 240), selection: selection)
+    checkEqual(local, CGPoint(x: 50, y: 40), "screen point converts to selection-local")
+    let back = AnnotationSpace.screen(fromLocal: local, selection: selection)
+    checkEqual(back, CGPoint(x: 350, y: 240), "selection-local point converts back to screen")
+    checkEqual(
+        AnnotationSpace.screen(fromLocal: CGRect(x: 10, y: 20, width: 30, height: 40), selection: selection),
+        CGRect(x: 310, y: 220, width: 30, height: 40),
+        "local rect offsets by selection origin once"
+    )
+}
+
+do {
+    // Regression: an off-origin selection must place the annotation exactly
+    // under the cursor, not shifted by the selection origin.
+    let source = makeTestImage(width: 400, height: 300)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 400, height: 300),
+        image: source,
+        workingScale: 1
+    )
+    let selection = CaptureSelection(rect: CGRect(x: 300, y: 200, width: 100, height: 80))
+    let document = ScreenshotDocument(selection: selection, workingScale: 1, baseImage: captured.image)
+    let localStart = AnnotationSpace.local(fromScreen: CGPoint(x: 320, y: 220), selection: selection.rect)
+    document.add(Annotation(
+        kind: .line(LineShape(start: localStart, end: CGPoint(x: localStart.x, y: localStart.y + 40), pattern: .solid, startArrow: .none, endArrow: .none)),
+        color: .annotationWhite,
+        lineWidth: 10
+    ))
+    check(AnnotationSpace.isConsistent(annotation: document.annotations[0], selection: selection.rect), "annotation stays in selection-local space")
+    let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured)
+    checkEqual(composed?.width, 100, "off-origin selection composition width")
+    if let composed, let color = sampledColor(composed, x: 20, y: 30) {
+        check(color.0 > 200 && color.1 > 200 && color.2 > 200, "annotation renders at the local position")
+    } else {
+        check(false, "off-origin annotation sampling")
+    }
+}
+
+// MARK: - Drawing gesture uses selection-local coordinates
+
+do {
+    // Mirrors what the controller does for a drag: mouse points are screen-local,
+    // converted with AnnotationSpace before being stored.
+    let selection = CGRect(x: 300, y: 200, width: 200, height: 150)
+    let startScreen = CGPoint(x: 350, y: 240)
+    let endScreen = CGPoint(x: 390, y: 290)
+    let localStart = AnnotationSpace.local(fromScreen: startScreen, selection: selection)
+    let localEnd = AnnotationSpace.local(fromScreen: endScreen, selection: selection)
+    checkEqual(localStart, CGPoint(x: 50, y: 40), "drag start stored relative to selection")
+    checkEqual(localEnd, CGPoint(x: 90, y: 90), "drag end stored relative to selection")
+
+    let rect = CGRect(
+        x: min(localStart.x, localEnd.x),
+        y: min(localStart.y, localEnd.y),
+        width: abs(localEnd.x - localStart.x),
+        height: abs(localEnd.y - localStart.y)
+    )
+    let annotation = Annotation(kind: .rectangle(RectangleShape(
+        center: CGPoint(x: rect.midX, y: rect.midY),
+        size: rect.size,
+        angle: 0,
+        mosaic: 0
+    )))
+    check(AnnotationSpace.isConsistent(annotation: annotation, selection: selection), "drawn annotation stays inside selection space")
+    checkEqual(annotation.center, CGPoint(x: 70, y: 65), "annotation center is selection-local")
+}
+
 // MARK: - Native Retina composition
 
 do {
@@ -457,7 +535,7 @@ do {
     checkEqual(captured.pixelWidth, 200, "native Retina capture keeps 2x width")
     checkEqual(captured.displayImage?.width, 200, "display image is not downscaled")
     let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 50, height: 40))
-    let document = ScreenshotDocument(selection: selection, workingScale: 2, selectionOrigin: .zero, baseImage: captured.image)
+    let document = ScreenshotDocument(selection: selection, workingScale: 2,  baseImage: captured.image)
     let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured)
     checkEqual(composed?.width, 100, "native composition width uses backing scale")
     checkEqual(composed?.height, 80, "native composition height uses backing scale")
@@ -473,7 +551,7 @@ do {
         workingScale: 1
     )
     let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 100, height: 50))
-    let document = ScreenshotDocument(selection: selection, workingScale: 1, selectionOrigin: .zero, baseImage: captured.image)
+    let document = ScreenshotDocument(selection: selection, workingScale: 1,  baseImage: captured.image)
     let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured)
     check(composed != nil, "composition image exists")
     if let composed {

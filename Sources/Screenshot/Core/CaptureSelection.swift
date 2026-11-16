@@ -4,27 +4,17 @@ import Foundation
 enum SelectionHandle: CaseIterable {
     case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
 
-    var movesLeft: Bool {
-        self == .topLeft || self == .left || self == .bottomLeft
-    }
-
-    var movesRight: Bool {
-        self == .topRight || self == .right || self == .bottomRight
-    }
-
-    var movesTop: Bool {
-        self == .topLeft || self == .top || self == .topRight
-    }
-
-    var movesBottom: Bool {
-        self == .bottomLeft || self == .bottom || self == .bottomRight
-    }
+    var movesLeft: Bool { self == .topLeft || self == .left || self == .bottomLeft }
+    var movesRight: Bool { self == .topRight || self == .right || self == .bottomRight }
+    var movesTop: Bool { self == .topLeft || self == .top || self == .topRight }
+    var movesBottom: Bool { self == .bottomLeft || self == .bottom || self == .bottomRight }
 }
 
 /// Selection rectangle in the active screen's local, top-left-origin points.
 struct CaptureSelection: Equatable {
     static let minimumSize: CGFloat = 4
-    static let handleHitRadius: CGFloat = 9
+    static let cornerHitRadius: CGFloat = 22
+    static let edgeHitBand: CGFloat = 12
 
     var rect: CGRect
 
@@ -49,11 +39,36 @@ struct CaptureSelection: Equatable {
         rect.contains(point)
     }
 
+    /// Generous hit testing for the eight resize handles. Corners get a larger
+    /// circular target; the entire length of each edge is a resize target, not
+    /// just its midpoint. This makes the handles practical on high-resolution
+    /// screens without changing the visual selection rectangle.
     func handle(at point: CGPoint) -> SelectionHandle? {
-        for (handle, center) in handleCenters {
-            if hypot(center.x - point.x, center.y - point.y) <= Self.handleHitRadius {
-                return handle
+        let corners: [(SelectionHandle, CGPoint)] = [
+            (.topLeft, CGPoint(x: rect.minX, y: rect.minY)),
+            (.topRight, CGPoint(x: rect.maxX, y: rect.minY)),
+            (.bottomRight, CGPoint(x: rect.maxX, y: rect.maxY)),
+            (.bottomLeft, CGPoint(x: rect.minX, y: rect.maxY))
+        ]
+        var best: (SelectionHandle, CGFloat)?
+        for (handle, center) in corners {
+            let distance = hypot(center.x - point.x, center.y - point.y)
+            if distance <= Self.cornerHitRadius, distance < (best?.1 ?? .greatestFiniteMagnitude) {
+                best = (handle, distance)
             }
+        }
+        if let best { return best.0 }
+
+        let extendedX = rect.minX - Self.edgeHitBand ... rect.maxX + Self.edgeHitBand
+        let extendedY = rect.minY - Self.edgeHitBand ... rect.maxY + Self.edgeHitBand
+
+        if extendedX.contains(point.x) {
+            if abs(point.y - rect.minY) <= Self.edgeHitBand { return .top }
+            if abs(point.y - rect.maxY) <= Self.edgeHitBand { return .bottom }
+        }
+        if extendedY.contains(point.y) {
+            if abs(point.x - rect.minX) <= Self.edgeHitBand { return .left }
+            if abs(point.x - rect.maxX) <= Self.edgeHitBand { return .right }
         }
         return nil
     }

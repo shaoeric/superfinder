@@ -96,7 +96,7 @@ struct ScreenshotDocumentSnapshot: Equatable {
 final class ScreenshotDocument {
     var selection: CaptureSelection
     let workingScale: CGFloat
-    var selectionOrigin: CGPoint
+    var selectionOrigin: CGPoint { selection.rect.origin }
     var baseImage: CGImage?
     let frozenRaster = FrozenRaster()
 
@@ -111,10 +111,9 @@ final class ScreenshotDocument {
     private var coalescingKey: String?
     private var lastCoalescedAt: Date = .distantPast
 
-    init(selection: CaptureSelection, workingScale: CGFloat, selectionOrigin: CGPoint, baseImage: CGImage?) {
+    init(selection: CaptureSelection, workingScale: CGFloat, baseImage: CGImage?) {
         self.selection = selection
         self.workingScale = workingScale
-        self.selectionOrigin = selectionOrigin
         self.baseImage = baseImage
     }
 
@@ -132,7 +131,6 @@ final class ScreenshotDocument {
 
     func updateSelection(_ selection: CaptureSelection) {
         self.selection = selection
-        self.selectionOrigin = selection.rect.origin
         rebuildFrozen()
         onChange?()
     }
