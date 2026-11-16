@@ -18,7 +18,7 @@ enum ScreenshotComposer {
 
         let width = max(1, Int(selectionWidth.rounded(.up)))
         let height = max(1, Int(selectionHeight.rounded(.up)))
-        guard MemoryBudget.imageBytes(width: width, height: height) <= MemoryBudget.baseImageLimit + 128 * 1024,
+        guard MemoryBudget.imageBytes(width: width, height: height) <= MemoryBudget.absoluteImageLimit,
               let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(
                 data: nil,

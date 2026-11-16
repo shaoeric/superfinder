@@ -46,7 +46,6 @@ final class ScreenshotController {
     private var eventMonitor: Any?
     private var previousApp: NSRunningApplication?
     private var pins: [PinnedImageWindow] = []
-    private var pinsHiddenForCapture = false
 
     private var dragMode: DragMode?
     private var dragStartPoint: CGPoint = .zero
@@ -92,7 +91,6 @@ final class ScreenshotController {
 
         NSApp.activate(ignoringOtherApps: true)
         sessionScreenSignature = Self.screenSignature()
-        hidePinsForCapture()
         state = .capturing
         installEventMonitor()
         createChromeIfNeeded()
@@ -165,7 +163,6 @@ final class ScreenshotController {
         eraseStroke = nil
         editingTextID = nil
         state = .idle
-        restorePinsAfterCapture()
         onActiveChanged?(false)
         if restoreApp {
             restorePreviousApp()
@@ -179,22 +176,6 @@ final class ScreenshotController {
             return
         }
         previousApp.activate(options: [.activateIgnoringOtherApps])
-    }
-
-    private func restorePinsAfterCapture() {
-        guard pinsHiddenForCapture else { return }
-        pinsHiddenForCapture = false
-        for pin in pins {
-            pin.restore()
-        }
-    }
-
-    private func hidePinsForCapture() {
-        guard !pinsHiddenForCapture else { return }
-        pinsHiddenForCapture = true
-        for pin in pins {
-            pin.compressAndHide()
-        }
     }
 
     private func ensureScreenRecordingPermission() -> Bool {
@@ -1306,17 +1287,6 @@ final class ScreenshotController {
 
     private func pinSelection() {
         guard state == .editing, let document, let captured, let selection, let screen = activeScreen else { return }
-        let estimatedPixels = MemoryBudget.pixelSize(
-            forPointSize: selection.rect.size,
-            scale: captured.workingScale
-        )
-        let newBytes = MemoryBudget.imageBytes(width: estimatedPixels.width, height: estimatedPixels.height)
-        let existingBytes = pins.reduce(0) { $0 + MemoryBudget.bytes(width: CGFloat($1.image?.width ?? 0), height: CGFloat($1.image?.height ?? 0)) }
-        guard existingBytes + newBytes <= MemoryBudget.pinLimit else {
-            showError("贴图内存已满", detail: "请先关闭部分贴图，再创建新的贴图。")
-            return
-        }
-
         document.rebuildFrozen()
         let mosaicImages = prepareMosaicCache(document: document, captured: captured)
         hideChromeForModal()

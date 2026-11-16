@@ -36,13 +36,9 @@ final class FrozenRaster {
             release()
             return
         }
-        let maxFrozenScale = sqrt(
-            Double(MemoryBudget.frozenLayerLimit) /
-            Double(max(1, selectionSize.width * selectionSize.height * CGFloat(MemoryBudget.bytesPerPixel)))
-        )
-        let frozenScale = min(scale, CGFloat(maxFrozenScale))
+        let frozenScale = scale
         let pixels = MemoryBudget.pixelSize(forPointSize: selectionSize, scale: frozenScale)
-        guard MemoryBudget.imageBytes(width: pixels.width, height: pixels.height) <= MemoryBudget.frozenLayerLimit + 64 * 1024 else {
+        guard MemoryBudget.imageBytes(width: pixels.width, height: pixels.height) <= MemoryBudget.absoluteImageLimit else {
             release()
             return
         }
@@ -86,28 +82,7 @@ final class FrozenRaster {
             selectionHeight: selectionSize.height
         )
         image = context.makeImage()
-        displayImage = image.map { Self.downscaled($0, maxBytes: 384 * 1024) ?? $0 }
-    }
-
-    private static func downscaled(_ image: CGImage, maxBytes: Int) -> CGImage? {
-        let sourceBytes = MemoryBudget.imageBytes(width: image.width, height: image.height)
-        guard sourceBytes > maxBytes else { return image }
-        let ratio = sqrt(Double(maxBytes) / Double(sourceBytes))
-        let width = max(1, Int(Double(image.width) * ratio))
-        let height = max(1, Int(Double(image.height) * ratio))
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(
-                data: nil,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              ) else { return image }
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        return context.makeImage()
+        displayImage = image
     }
 }
 

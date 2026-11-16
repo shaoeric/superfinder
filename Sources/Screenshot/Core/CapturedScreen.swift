@@ -40,9 +40,9 @@ final class CapturedScreen {
         guard screenPointSize.width > 0, screenPointSize.height > 0 else {
             throw CapturedScreenError.emptyScreen
         }
-        let scale = workingScale ?? MemoryBudget.workingScale(forPointSize: screenPointSize)
+        let scale = workingScale ?? max(1, CGFloat(source.width) / screenPointSize.width)
         let pixels = MemoryBudget.pixelSize(forPointSize: screenPointSize, scale: scale)
-        guard MemoryBudget.imageBytes(width: pixels.width, height: pixels.height) <= MemoryBudget.baseImageLimit + 64 * 1024 else {
+        guard MemoryBudget.imageBytes(width: pixels.width, height: pixels.height) <= MemoryBudget.absoluteImageLimit else {
             throw CapturedScreenError.cannotCreateContext
         }
 
@@ -75,7 +75,7 @@ final class CapturedScreen {
         self.pixelWidth = finalImage.width
         self.pixelHeight = finalImage.height
         self.image = finalImage
-        self.displayImage = Self.makeDisplayImage(finalImage, maxPixelBytes: 768 * 1024)
+        self.displayImage = finalImage
     }
 
     /// Convenience initializer used by tests and preview tools.
@@ -145,29 +145,5 @@ final class CapturedScreen {
         let h = min(pixelHeight - y, Int(ceil(standardized.height * workingScale)))
         guard x >= 0, y >= 0, w > 0, h > 0 else { return nil }
         return image.cropping(to: CGRect(x: x, y: y, width: w, height: h))
-    }
-
-    private static func makeDisplayImage(_ source: CGImage, maxPixelBytes: Int) -> CGImage? {
-        let sourceBytes = MemoryBudget.imageBytes(width: source.width, height: source.height)
-        guard sourceBytes > 0 else { return nil }
-        let scale = min(1.0, sqrt(Double(maxPixelBytes) / Double(sourceBytes)))
-        let width = max(1, Int((Double(source.width) * scale).rounded()))
-        let height = max(1, Int((Double(source.height) * scale).rounded()))
-        if width == source.width && height == source.height { return source }
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(
-                data: nil,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              ) else {
-            return source
-        }
-        context.interpolationQuality = .high
-        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
-        return context.makeImage()
     }
 }

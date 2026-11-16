@@ -10,7 +10,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         target: nil,
         action: nil
     )
-    private let versionLabel = NSTextField(labelWithString: "版本 1.1.0 · 本地 ad-hoc 签名")
+    private let versionLabel = NSTextField(labelWithString: "版本 1.1.1 · 本地 ad-hoc 签名")
     private let screenRecordingLabel = NSTextField(labelWithString: "")
 
     var onStartScreenshot: (() -> Void)?
@@ -118,7 +118,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.addArrangedSubview(screenshotButtons)
 
         let screenshotHint = makeWrappingLabel(
-            "截屏按鼠标所在显示器单屏工作，可跨屏切换活动屏；为把工作内存峰值控制在 20 MB 以内，保存分辨率为受限的工作分辨率。"
+            "截屏按鼠标所在显示器单屏工作，可跨屏切换活动屏；截图与保存使用显示器原生 backing scale（Retina 2x），不做缩略图降采样。"
             + "截屏只在按下快捷键时采集一次，不使用持续录屏；标注/选区/悬停均为事件驱动，不使用轮询重绘。",
             font: .systemFont(ofSize: 11),
             color: .secondaryLabelColor

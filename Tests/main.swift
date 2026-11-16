@@ -348,14 +348,10 @@ func sampledColor(_ image: CGImage, x: Int, y: Int) -> (UInt8, UInt8, UInt8)? {
 }
 
 do {
-    checkEqual(MemoryBudget.hardLimit, 20 * 1024 * 1024, "20 MB hard working-set limit")
-    check(MemoryBudget.baseImageLimit <= 3 * 1024 * 1024, "base screenshot bitmap capped")
-    check(MemoryBudget.frozenLayerLimit <= 2 * 1024 * 1024, "frozen annotation bitmap capped")
-    let scale = MemoryBudget.workingScale(forPointSize: CGSize(width: 1920, height: 1080))
-    let pixels = MemoryBudget.pixelSize(forPointSize: CGSize(width: 1920, height: 1080), scale: scale)
-    check(MemoryBudget.imageBytes(width: pixels.width, height: pixels.height) <= MemoryBudget.baseImageLimit, "1920x1080 working bitmap under 7MB")
-    let retinaScale = MemoryBudget.workingScale(forPointSize: CGSize(width: 1280, height: 832))
-    check(retinaScale > 0 && retinaScale <= 1, "Retina logical screen scale is capped at 1x")
+    check(MemoryBudget.absoluteImageLimit >= 256 * 1024 * 1024, "renderer only has a generous safety ceiling")
+    let pixels = MemoryBudget.pixelSize(forPointSize: CGSize(width: 1280, height: 832), scale: 2)
+    checkEqual(pixels.width, 2560, "native Retina capture width")
+    checkEqual(pixels.height, 1664, "native Retina capture height")
 }
 
 do {
@@ -437,7 +433,7 @@ do {
     checkEqual(document.annotations.count, 0, "erased line leaves editable list")
     checkEqual(document.frozenAnnotations.count, 1, "erased line is frozen")
     check(document.frozenRaster.image != nil, "frozen raster rendered")
-    check(document.frozenRaster.byteCount <= MemoryBudget.frozenLayerLimit, "frozen raster under limit")
+    check(document.frozenRaster.byteCount <= MemoryBudget.absoluteImageLimit, "frozen raster within safety ceiling")
 
     document.undo()
     checkEqual(document.annotations.count, 1, "undo restores editable line")
@@ -447,6 +443,24 @@ do {
     document.redo()
     checkEqual(document.annotations.count, 0, "redo freezes line again")
     checkEqual(document.frozenAnnotations.count, 1, "redo restores frozen line")
+}
+
+// MARK: - Native Retina composition
+
+do {
+    let source = makeTestImage(width: 200, height: 160)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 100, height: 80),
+        image: source,
+        workingScale: 2
+    )
+    checkEqual(captured.pixelWidth, 200, "native Retina capture keeps 2x width")
+    checkEqual(captured.displayImage?.width, 200, "display image is not downscaled")
+    let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 50, height: 40))
+    let document = ScreenshotDocument(selection: selection, workingScale: 2, selectionOrigin: .zero, baseImage: captured.image)
+    let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured)
+    checkEqual(composed?.width, 100, "native composition width uses backing scale")
+    checkEqual(composed?.height, 80, "native composition height uses backing scale")
 }
 
 // MARK: - Screenshot composition

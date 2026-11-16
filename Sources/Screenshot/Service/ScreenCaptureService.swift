@@ -44,7 +44,7 @@ final class ScreenCaptureService {
 
         let pointSize = screen.frame.size
         let screenFrame = screen.frame
-        let scale = MemoryBudget.workingScale(forPointSize: pointSize)
+        let scale = max(1, screen.backingScaleFactor)
         let pixels = MemoryBudget.pixelSize(forPointSize: pointSize, scale: scale)
         var finished = false
         let finish: (Result<CapturedScreen, Error>) -> Void = { [weak self] result in
