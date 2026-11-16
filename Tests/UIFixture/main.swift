@@ -52,7 +52,7 @@ do {
     let swatches = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? ColorSwatchButton } ?? []
     checkEqual(swatches.count, 3, "toolbar exposes one color swatch per drawing tool")
     check(swatches.allSatisfy { $0.frame.width > 0 && $0.frame.height > 0 }, "toolbar swatches are laid out")
-    check(swatches.allSatisfy { $0.title.isEmpty }, "color swatches do not draw a default button title")
+    check(swatches.allSatisfy { $0.title.isEmpty && $0.attributedTitle.string.isEmpty }, "color swatches do not draw a default button title")
     let toolbarButtons = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? NSButton } ?? []
     let iconButtons = toolbarButtons.filter { $0.image != nil }
     check(iconButtons.count >= 11, "toolbar exposes all icon buttons")
@@ -74,7 +74,7 @@ do {
     let swatches = palette.contentView?.allSubviewsRecursively.compactMap { $0 as? ColorSwatchButton } ?? []
     checkEqual(swatches.count, 12, "palette exposes the preset swatches")
     check(swatches.allSatisfy { $0.frame.width > 0 && $0.frame.height > 0 }, "palette swatches are laid out")
-    check(swatches.allSatisfy { $0.title.isEmpty }, "palette swatches do not draw a default button title")
+    check(swatches.allSatisfy { $0.title.isEmpty && $0.attributedTitle.string.isEmpty }, "palette swatches do not draw a default button title")
     check(palette.frame.width >= 200, "palette has room for two swatch rows")
     check(
         palette.level.rawValue > NSWindow.Level.screenSaver.rawValue + 1,
