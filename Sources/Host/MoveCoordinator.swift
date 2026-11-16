@@ -9,6 +9,7 @@ final class MoveCoordinator {
     weak var statusBar: StatusBarController?
     private(set) var isBusy = false
     var pendingTerminationReply = false
+    var onIdle: (() -> Void)?
 
     // MARK: - Entry point
 
@@ -217,6 +218,7 @@ final class MoveCoordinator {
 
         isBusy = false
         replyToTerminationIfNeeded()
+        onIdle?()
     }
 
     private func finishWithoutMove(message: String?) {
@@ -231,6 +233,7 @@ final class MoveCoordinator {
         }
         isBusy = false
         replyToTerminationIfNeeded()
+        onIdle?()
     }
 
     private func presentFailureAlert(_ outcome: MoveOutcome) {

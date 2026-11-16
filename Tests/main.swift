@@ -1,4 +1,8 @@
 import Foundation
+import AppKit
+import CoreGraphics
+
+_ = NSApplication.shared
 
 var failureCount = 0
 var checkCount = 0
@@ -310,6 +314,163 @@ do {
     let movedLink = destination.appendingPathComponent("link.txt")
     check((try? fileManager.destinationOfSymbolicLink(atPath: movedLink.path)) != nil, "moved item is still a symlink")
     check(readFile(target) == "target", "symlink target untouched")
+}
+
+
+// MARK: - Screenshot geometry and memory
+
+func makeTestImage(width: Int, height: Int) -> CGImage {
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    let ctx = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    ctx.setFillColor(NSColor.red.cgColor)
+    ctx.fill(CGRect(x: 0, y: height / 2, width: width, height: height - height / 2))
+    ctx.setFillColor(NSColor.blue.cgColor)
+    ctx.fill(CGRect(x: 0, y: 0, width: width, height: height / 2))
+    return ctx.makeImage()!
+}
+
+func sampledColor(_ image: CGImage, x: Int, y: Int) -> (UInt8, UInt8, UInt8)? {
+    guard let captured = try? CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: image.width, height: image.height),
+        image: image,
+        workingScale: 1
+    ) else { return nil }
+    guard let color = captured.pixelColor(atScreenPoint: CGPoint(x: x, y: y)) else { return nil }
+    return (color.r, color.g, color.b)
+}
+
+do {
+    checkEqual(MemoryBudget.hardLimit, 20 * 1024 * 1024, "20 MB hard working-set limit")
+    check(MemoryBudget.baseImageLimit <= 3 * 1024 * 1024, "base screenshot bitmap capped")
+    check(MemoryBudget.frozenLayerLimit <= 2 * 1024 * 1024, "frozen annotation bitmap capped")
+    let scale = MemoryBudget.workingScale(forPointSize: CGSize(width: 1920, height: 1080))
+    let pixels = MemoryBudget.pixelSize(forPointSize: CGSize(width: 1920, height: 1080), scale: scale)
+    check(MemoryBudget.imageBytes(width: pixels.width, height: pixels.height) <= MemoryBudget.baseImageLimit, "1920x1080 working bitmap under 7MB")
+    let retinaScale = MemoryBudget.workingScale(forPointSize: CGSize(width: 1280, height: 832))
+    check(retinaScale > 0 && retinaScale <= 1, "Retina logical screen scale is capped at 1x")
+}
+
+do {
+    let source = makeTestImage(width: 100, height: 80)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 100, height: 80),
+        image: source,
+        workingScale: 1
+    )
+    let top = captured.pixelColor(atScreenPoint: CGPoint(x: 10, y: 10))
+    let bottom = captured.pixelColor(atScreenPoint: CGPoint(x: 10, y: 70))
+    check(top?.r ?? 0 > 200 && top?.b ?? 255 < 50, "captured top-left is red")
+    check(bottom?.b ?? 0 > 200 && bottom?.r ?? 255 < 50, "captured bottom is blue")
+
+    let crop = captured.croppedImage(forScreenRect: CGRect(x: 0, y: 0, width: 50, height: 20))
+    check(crop != nil, "cropped image exists")
+    if let crop, let color = sampledColor(crop, x: 10, y: 10) {
+        check(color.0 > 200 && color.2 < 50, "cropped top-left stays red")
+    } else {
+        check(false, "cropped image sampling")
+    }
+}
+
+do {
+    var selection = CaptureSelection(anchor: CGPoint(x: 100, y: 100), current: CGPoint(x: 50, y: 80))
+    checkEqual(selection.rect, CGRect(x: 50, y: 80, width: 50, height: 20), "selection normalized from any direction")
+    check(selection.handle(at: CGPoint(x: 50, y: 80)) == .topLeft, "top-left handle hit")
+    selection.resize(handle: .bottomRight, by: CGPoint(x: 10, y: 5), within: CGRect(x: 0, y: 0, width: 300, height: 300))
+    checkEqual(selection.rect, CGRect(x: 50, y: 80, width: 60, height: 25), "selection resize")
+    selection.move(by: CGPoint(x: -100, y: -100), within: CGRect(x: 0, y: 0, width: 300, height: 300))
+    checkEqual(selection.rect.origin, CGPoint(x: 0, y: 0), "selection move clamps to screen")
+}
+
+do {
+    var rect = RectangleShape(center: CGPoint(x: 100, y: 100), size: CGSize(width: 80, height: 40), angle: .pi / 4, mosaic: 0)
+    let annotation = Annotation(kind: .rectangle(rect), color: .annotationBlue, lineWidth: 3)
+    check(annotation.hitTest(rect.center), "rotated rectangle center hit")
+    check(!annotation.hitTest(CGPoint(x: 300, y: 300)), "rotated rectangle far miss")
+    let line = Annotation(kind: .line(LineShape(start: CGPoint(x: 10, y: 10), end: CGPoint(x: 100, y: 10), pattern: .solid, startArrow: .none, endArrow: .none)))
+    check(line.hitTest(CGPoint(x: 50, y: 12)), "line hit near stroke")
+    check(!line.hitTest(CGPoint(x: 50, y: 60)), "line miss far away")
+    rect.angle = 0
+    _ = rect
+}
+
+do {
+    let text = TextShape(origin: .zero, text: "第一行\nsecond line", fontName: "", fontSize: 20)
+    let size = TextLayout.size(text: text.text, fontName: text.fontName, fontSize: text.fontSize)
+    check(size.height > 30, "multiline text measures more than one line")
+    check(size.width > 40, "text measures width")
+}
+
+// MARK: - Screenshot eraser and history
+
+do {
+    let source = makeTestImage(width: 200, height: 120)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 200, height: 120),
+        image: source,
+        workingScale: 1
+    )
+    let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 200, height: 120))
+    let document = ScreenshotDocument(selection: selection, workingScale: 1, selectionOrigin: .zero, baseImage: captured.image)
+    document.add(Annotation(kind: .line(LineShape(
+        start: CGPoint(x: 20, y: 60),
+        end: CGPoint(x: 180, y: 60),
+        pattern: .solid,
+        startArrow: .none,
+        endArrow: .none
+    )), color: .annotationBlue, lineWidth: 4))
+    checkEqual(document.annotations.count, 1, "line added")
+    check(document.canUndo, "add created undo entry")
+
+    document.commitEraseStroke(EraseStroke(
+        points: [CGPoint(x: 100, y: 60), CGPoint(x: 101, y: 60)],
+        brushSize: 16,
+        shape: .circle
+    ))
+    checkEqual(document.annotations.count, 0, "erased line leaves editable list")
+    checkEqual(document.frozenAnnotations.count, 1, "erased line is frozen")
+    check(document.frozenRaster.image != nil, "frozen raster rendered")
+    check(document.frozenRaster.byteCount <= MemoryBudget.frozenLayerLimit, "frozen raster under limit")
+
+    document.undo()
+    checkEqual(document.annotations.count, 1, "undo restores editable line")
+    checkEqual(document.frozenAnnotations.count, 0, "undo clears frozen line")
+    check(document.frozenRaster.image == nil, "undo releases frozen raster")
+
+    document.redo()
+    checkEqual(document.annotations.count, 0, "redo freezes line again")
+    checkEqual(document.frozenAnnotations.count, 1, "redo restores frozen line")
+}
+
+// MARK: - Screenshot composition
+
+do {
+    let source = makeTestImage(width: 200, height: 120)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 200, height: 120),
+        image: source,
+        workingScale: 1
+    )
+    let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 100, height: 50))
+    let document = ScreenshotDocument(selection: selection, workingScale: 1, selectionOrigin: .zero, baseImage: captured.image)
+    let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured)
+    check(composed != nil, "composition image exists")
+    if let composed {
+        checkEqual(composed.width, 100, "composition crop width")
+        checkEqual(composed.height, 50, "composition crop height")
+        if let color = sampledColor(composed, x: 10, y: 10) {
+            check(color.0 > 200 && color.2 < 50, "composition preserves top red crop orientation")
+        } else {
+            check(false, "composition color sampling")
+        }
+    }
 }
 
 // MARK: - Summary

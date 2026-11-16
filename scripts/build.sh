@@ -26,6 +26,12 @@ SHARED_SOURCES=(
   Sources/Shared/MoveEngine.swift
 )
 
+SCREENSHOT_SOURCES=(
+  Sources/Screenshot/Core/*.swift
+  Sources/Screenshot/Service/*.swift
+  Sources/Screenshot/UI/*.swift
+)
+
 HOST_SOURCES=(
   Sources/Host/ProcessRunner.swift
   Sources/Host/InstanceLock.swift
@@ -48,8 +54,9 @@ COMMON_FLAGS=(-O -sdk "$SDK" -target "$TARGET" -swift-version 5 -module-cache-pa
 echo "==> Compiling host app"
 "$SWIFTC" "${COMMON_FLAGS[@]}" \
   -module-name SuperFinder \
-  -framework AppKit -framework FinderSync \
-  "${SHARED_SOURCES[@]}" "${HOST_SOURCES[@]}" \
+  -framework AppKit -framework FinderSync -framework Carbon -framework QuartzCore \
+  -framework ScreenCaptureKit -framework ImageIO -framework UniformTypeIdentifiers \
+  "${SHARED_SOURCES[@]}" "${SCREENSHOT_SOURCES[@]}" "${HOST_SOURCES[@]}" \
   -o "$HOST_BIN"
 
 echo "==> Compiling Finder extension"

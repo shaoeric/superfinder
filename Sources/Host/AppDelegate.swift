@@ -5,6 +5,8 @@ import os
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let log = Logger(subsystem: AppConfig.logSubsystem, category: "host")
     private let coordinator = MoveCoordinator()
+    private let screenshotController = ScreenshotController()
+    private let hotKey = GlobalHotKey()
     private var statusBar: StatusBarController!
     private var watcher: CommandWatcher!
     var instanceLock: InstanceLock?
@@ -39,8 +41,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBar.onReloadFinder = { [weak self] in
             self?.reloadFinder(confirm: true)
         }
+        statusBar.onStartScreenshot = { [weak self] in
+            self?.screenshotController.beginCapture()
+        }
         statusBar.onQuit = {
             NSApp.terminate(nil)
+        }
+
+        screenshotController.statusBar = statusBar
+        SettingsWindowController.shared.onStartScreenshot = { [weak self] in
+            self?.screenshotController.beginCapture()
+        }
+        screenshotController.canStart = { [weak self] in
+            !(self?.coordinator.isBusy ?? false)
+        }
+        screenshotController.onActiveChanged = { [weak self] active in
+            guard let self else { return }
+            self.watcher.isSuspended = active
+            if !active {
+                self.watcher.resumeProcessing()
+            }
+        }
+
+        hotKey.callback = { [weak self] in
+            self?.screenshotController.beginCapture()
+        }
+        let hotKeyStatus = hotKey.registerControlQ()
+        if hotKeyStatus != noErr {
+            log.error("Cannot register screenshot hotkey: \(hotKeyStatus, privacy: .public)")
+            statusBar.showTransientTooltip("截屏快捷键 ⌃Q 注册失败，请使用菜单栏入口")
         }
 
         watcher = CommandWatcher(coordinator: coordinator)
@@ -48,9 +77,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBar.refreshExtensionStatus()
 
         log.info("SuperFinder host app started")
+
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        hotKey.unregister()
+        screenshotController.shutdown()
         watcher?.stop()
         DistributedNotificationCenter.default().removeObserver(self)
         log.info("SuperFinder host app terminating")
@@ -64,6 +96,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if screenshotController.isActive {
+            screenshotController.shutdown()
+            return .terminateNow
+        }
         if coordinator.isBusy {
             coordinator.pendingTerminationReply = true
             return .terminateLater
@@ -89,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch url.host {
             case "settings":
                 self?.showSettings()
+            case "screenshot":
+                self?.screenshotController.beginCapture()
             case "quit":
                 NSApp.terminate(nil)
             default:

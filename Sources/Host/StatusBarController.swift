@@ -10,6 +10,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
     var onOpenSettings: (() -> Void)?
     var onReloadFinder: (() -> Void)?
+    var onStartScreenshot: (() -> Void)?
     var onQuit: (() -> Void)?
 
     override init() {
@@ -35,6 +36,15 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private func buildMenu() {
         menu.autoenablesItems = false
         menu.delegate = self
+
+        let screenshotItem = NSMenuItem(
+            title: "开始截屏",
+            action: #selector(startScreenshotAction(_:)),
+            keyEquivalent: "q"
+        )
+        screenshotItem.keyEquivalentModifierMask = [.control]
+        screenshotItem.target = self
+        menu.addItem(screenshotItem)
 
         let settingsItem = NSMenuItem(
             title: "设置…",
@@ -136,6 +146,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     // MARK: - Actions
+
+    @objc private func startScreenshotAction(_ sender: Any?) {
+        onStartScreenshot?()
+    }
 
     @objc private func openSettingsAction(_ sender: Any?) {
         onOpenSettings?()

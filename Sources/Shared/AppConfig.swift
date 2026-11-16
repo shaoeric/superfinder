@@ -14,7 +14,6 @@ enum AppConfig {
     static let sharedSupportHomeRelativePath = "Library/Application Support/SuperFinder"
 
     static let maxCommandAge: TimeInterval = 10 * 60
-    static let commandPollInterval: TimeInterval = 0.5
 
     /// The real user home. Inside an App Sandbox `FileManager.homeDirectoryForCurrentUser`
     /// may resolve to the container, so use the passwd entry instead. This is what lets

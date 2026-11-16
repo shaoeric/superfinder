@@ -188,6 +188,15 @@ final class FinderSync: FIFinderSync {
             return
         }
 
+        // Wake an already-running host without polling. This is harmless when
+        // nobody is listening; the host scans pending commands when it launches.
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name(AppConfig.commandQueuedNotification),
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
+        )
+
         if isHostRunning() {
             if clearCutAfter {
                 cutBuffer.clear()

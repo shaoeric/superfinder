@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
@@ -9,7 +10,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         target: nil,
         action: nil
     )
-    private let versionLabel = NSTextField(labelWithString: "版本 1.0.0 · 本地 ad-hoc 签名")
+    private let versionLabel = NSTextField(labelWithString: "版本 1.1.0 · 本地 ad-hoc 签名")
+    private let screenRecordingLabel = NSTextField(labelWithString: "")
+
+    var onStartScreenshot: (() -> Void)?
 
     var isVisible: Bool {
         window?.isVisible == true
@@ -17,7 +21,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 580, height: 590),
+            contentRect: NSRect(x: 0, y: 0, width: 580, height: 730),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -25,7 +29,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.title = "SuperFinder 设置"
         window.isReleasedWhenClosed = false
         window.center()
-        window.contentMinSize = NSSize(width: 520, height: 500)
+        window.contentMinSize = NSSize(width: 520, height: 560)
         super.init(window: window)
         window.delegate = self
         buildUI()
@@ -99,6 +103,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         addFullWidth(extensionHint, to: stack)
 
+        stack.addArrangedSubview(makeSectionLabel("截屏与标注"))
+
+        screenRecordingLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        stack.addArrangedSubview(screenRecordingLabel)
+
+        let screenshotButtons = NSStackView(views: [
+            makeButton(title: "打开屏幕录制设置", action: #selector(openScreenRecordingSettings(_:))),
+            makeButton(title: "立即截屏（⌃Q）", action: #selector(startScreenshotAction(_:)))
+        ])
+        screenshotButtons.orientation = .horizontal
+        screenshotButtons.spacing = 10
+        screenshotButtons.alignment = .centerY
+        stack.addArrangedSubview(screenshotButtons)
+
+        let screenshotHint = makeWrappingLabel(
+            "截屏按鼠标所在显示器单屏工作，可跨屏切换活动屏；为把工作内存峰值控制在 20 MB 以内，保存分辨率为受限的工作分辨率。"
+            + "截屏只在按下快捷键时采集一次，不使用持续录屏；标注/选区/悬停均为事件驱动，不使用轮询重绘。",
+            font: .systemFont(ofSize: 11),
+            color: .secondaryLabelColor
+        )
+        addFullWidth(screenshotHint, to: stack)
+
         stack.addArrangedSubview(makeSectionLabel("菜单栏图标位置"))
 
         let menuBarHint = makeWrappingLabel(
@@ -132,7 +158,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             + "• 移动 N 项到这里：在目标文件夹空白处右键，把剪切的項目移动过去\n"
             + "• 复制绝对路径：复制选中项目的绝对路径，多选时每行一个\n"
             + "• 复制当前目录路径：在 Finder 窗口空白处右键复制当前目录\n"
-            + "• 在终端中打开：选中单个文件夹/文件右键，或在目录空白处右键打开当前目录",
+            + "• 在终端中打开：选中单个文件夹/文件右键，或在目录空白处右键打开当前目录\n"
+            + "• 截屏：菜单栏「开始截屏」或全局快捷键 ⌃Q，支持选区、标注、橡皮擦、贴图与保存",
             font: .systemFont(ofSize: 12),
             color: .labelColor
         )
@@ -210,6 +237,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         autoStartCheckbox.state = LoginItemManager.shared.isEnabled ? .on : .off
+
+        if CGPreflightScreenCaptureAccess() {
+            screenRecordingLabel.stringValue = "屏幕录制：已授权"
+            screenRecordingLabel.textColor = .systemGreen
+        } else {
+            screenRecordingLabel.stringValue = "屏幕录制：未授权（截屏前需要在系统设置中允许）"
+            screenRecordingLabel.textColor = .systemOrange
+        }
     }
 
     // MARK: - Actions
@@ -224,6 +259,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             alert.informativeText = "请手动打开「系统设置 → 通用 → 登录项与扩展」查看 Finder 扩展。"
             alert.runModal()
         }
+    }
+
+    @objc private func openScreenRecordingSettings(_ sender: Any?) {
+        ScreenRecordingPermission.openSettings()
+    }
+
+    @objc private func startScreenshotAction(_ sender: Any?) {
+        window?.close()
+        onStartScreenshot?()
     }
 
     @objc private func openMenuBarSettings(_ sender: Any?) {
@@ -277,6 +321,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             alert.runModal()
         }
         autoStartCheckbox.state = LoginItemManager.shared.isEnabled ? .on : .off
+
+        if CGPreflightScreenCaptureAccess() {
+            screenRecordingLabel.stringValue = "屏幕录制：已授权"
+            screenRecordingLabel.textColor = .systemGreen
+        } else {
+            screenRecordingLabel.stringValue = "屏幕录制：未授权（截屏前需要在系统设置中允许）"
+            screenRecordingLabel.textColor = .systemOrange
+        }
     }
 
     @objc private func restartFinderAction(_ sender: Any?) {
