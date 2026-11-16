@@ -22,6 +22,7 @@ mkdir -p "$BUILD/.module-cache"
   Sources/Screenshot/UI/ScreenshotDefaults.swift \
   Sources/Screenshot/UI/CaptureToolbar.swift \
   Sources/Screenshot/UI/ColorPalettePanel.swift \
+  Sources/Screenshot/UI/ScreenshotToast.swift \
   Sources/Screenshot/UI/PinnedImageWindow.swift \
   Tests/UIFixture/main.swift \
   -o "$BUILD/runner"

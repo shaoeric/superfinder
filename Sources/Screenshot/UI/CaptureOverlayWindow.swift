@@ -413,43 +413,11 @@ final class CaptureOverlayView: NSView {
         selectionOrigin: CGPoint,
         preview: Bool
     ) -> [CALayer] {
-        guard let captured = capturedScreen else { return [] }
-        let scale = captured.workingScale
         var layers: [CALayer] = []
 
         switch annotation.kind {
         case .rectangle(let shape):
             let selectionRect = CGRect(origin: selectionOrigin, size: document.selection.rect.size)
-            let screenCenter = AnnotationSpace.screen(fromLocal: shape.center, selection: selectionRect)
-            if shape.mosaic > 0,
-               let baseImage = captured.image,
-               let mosaic = MosaicRenderer.pixelatedImage(
-                baseImage: baseImage,
-                screenRect: CGRect(
-                    x: screenCenter.x - shape.size.width / 2,
-                    y: screenCenter.y - shape.size.height / 2,
-                    width: shape.size.width,
-                    height: shape.size.height
-                ),
-                workingScale: scale,
-                block: shape.mosaic * 2
-               ) {
-                let imageLayer = CALayer()
-                let rect = viewRect(forScreenRect: CGRect(
-                    x: screenCenter.x - shape.size.width / 2,
-                    y: screenCenter.y - shape.size.height / 2,
-                    width: shape.size.width,
-                    height: shape.size.height
-                ))
-                imageLayer.frame = rect
-                imageLayer.contents = mosaic
-                imageLayer.contentsGravity = .resize
-                imageLayer.magnificationFilter = .nearest
-                imageLayer.transform = CATransform3DMakeRotation(-shape.angle, 0, 0, 1)
-                imageLayer.opacity = preview ? 0.85 : 1
-                layers.append(imageLayer)
-            }
-
             let path = CGMutablePath()
             let corners = shape.corners.map {
                 viewPoint(forScreenPoint: AnnotationSpace.screen(fromLocal: $0, selection: selectionRect))
@@ -459,7 +427,7 @@ final class CaptureOverlayView: NSView {
             let outline = CAShapeLayer()
             outline.frame = bounds
             outline.path = path
-            outline.fillColor = NSColor.clear.cgColor
+            outline.fillColor = shape.filled ? annotation.color.nsColor.cgColor : NSColor.clear.cgColor
             outline.strokeColor = annotation.color.nsColor.cgColor
             outline.lineWidth = max(1, annotation.lineWidth)
             outline.lineJoin = .miter

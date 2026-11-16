@@ -26,7 +26,7 @@ let centerScreen = CGPoint(x: 360, y: 230)
 let centerLocal = AnnotationSpace.local(fromScreen: centerScreen, selection: selection.rect)
 document.add(Annotation(kind: .rectangle(RectangleShape(center: centerLocal,
                                                         size: CGSize(width: 80, height: 50),
-                                                        angle: 0, mosaic: 0)),
+                                                        angle: 0, filled: false)),
                         color: .annotationRed, lineWidth: 6))
 let lineStart = AnnotationSpace.local(fromScreen: CGPoint(x: 330, y: 300), selection: selection.rect)
 let lineEnd = AnnotationSpace.local(fromScreen: CGPoint(x: 450, y: 295), selection: selection.rect)

@@ -13,6 +13,7 @@ final class PinnedImageWindow: NSPanel, NSWindowDelegate {
     private let trackingView: PinTrackingView
     var onClose: (() -> Void)?
     var onShowToolbar: (() -> Void)?
+    private var preOverlayLevel: NSWindow.Level?
 
     init(
         image: CGImage,
@@ -105,10 +106,31 @@ final class PinnedImageWindow: NSPanel, NSWindowDelegate {
         closeButton.frame = CGRect(x: pointSize.width - 24, y: pointSize.height - 24, width: 18, height: 18)
     }
 
+    /// Keeps an existing pin visible above the screenshot overlay while the
+    /// user is selecting/annotating. Clicks pass through to the overlay so the
+    /// pin never steals a selection drag.
+    func setOverlayPassThrough(_ active: Bool) {
+        if active {
+            if preOverlayLevel == nil {
+                preOverlayLevel = level
+            }
+            level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+            ignoresMouseEvents = true
+        } else {
+            if let preOverlayLevel {
+                level = preOverlayLevel
+                self.preOverlayLevel = nil
+            }
+            ignoresMouseEvents = false
+        }
+        orderFrontRegardless()
+    }
+
     func copyToPasteboard() {
         guard let image else { return }
         guard ScreenshotPasteboard.copy(image: image) else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        ScreenshotToast.shared.show("已复制到剪贴板", near: frame, on: screen ?? NSScreen.main)
     }
 
     /// Makes the pin the key window and gives its tracking view first responder
@@ -140,6 +162,12 @@ final class PinnedImageWindow: NSPanel, NSWindowDelegate {
 
     override func close() {
         orderOut(nil)
+        // Drop the heavy backing data immediately, even if AppKit retains the
+        // window object briefly. Pins are memory-only and never persisted.
+        imageLayer.contents = nil
+        image = nil
+        imageData = nil
+        editingSession = nil
         onClose?()
         onClose = nil
         onShowToolbar = nil
@@ -229,12 +257,20 @@ final class PinTrackingView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            (window as? PinnedImageWindow)?.close()
+            return
+        }
         let isCopy = event.keyCode == 8 || event.charactersIgnoringModifiers?.lowercased() == "c"
         if event.modifierFlags.contains(.command), isCopy {
             onCopy?()
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        (window as? PinnedImageWindow)?.close()
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

@@ -393,7 +393,7 @@ do {
 }
 
 do {
-    var rect = RectangleShape(center: CGPoint(x: 100, y: 100), size: CGSize(width: 80, height: 40), angle: .pi / 4, mosaic: 0)
+    var rect = RectangleShape(center: CGPoint(x: 100, y: 100), size: CGSize(width: 80, height: 40), angle: .pi / 4, filled: false)
     let annotation = Annotation(kind: .rectangle(rect), color: .annotationBlue, lineWidth: 3)
     check(annotation.hitTest(rect.center), "rotated rectangle center hit")
     check(!annotation.hitTest(CGPoint(x: 300, y: 300)), "rotated rectangle far miss")
@@ -456,7 +456,7 @@ do {
 
 do {
     let rect = Annotation(
-        kind: .rectangle(RectangleShape(center: CGPoint(x: 300, y: 200), size: CGSize(width: 200, height: 120), angle: 0, mosaic: 0)),
+        kind: .rectangle(RectangleShape(center: CGPoint(x: 300, y: 200), size: CGSize(width: 200, height: 120), angle: 0, filled: false)),
         color: .annotationRed,
         lineWidth: 3
     )
@@ -470,7 +470,7 @@ do {
     check(rotationPoint.x < topLeft.x && rotationPoint.y < topLeft.y, "rotation handle sits outside the top-left corner")
 
     let rotated = Annotation(
-        kind: .rectangle(RectangleShape(center: CGPoint(x: 200, y: 160), size: CGSize(width: 140, height: 90), angle: .pi / 6, mosaic: 0)),
+        kind: .rectangle(RectangleShape(center: CGPoint(x: 200, y: 160), size: CGSize(width: 140, height: 90), angle: .pi / 6, filled: false)),
         color: .annotationRed,
         lineWidth: 3
     )
@@ -557,7 +557,7 @@ do {
         center: CGPoint(x: rect.midX, y: rect.midY),
         size: rect.size,
         angle: 0,
-        mosaic: 0
+        filled: false
     )))
     check(AnnotationSpace.isConsistent(annotation: annotation, selection: selection), "drawn annotation stays inside selection space")
     checkEqual(annotation.center, CGPoint(x: 70, y: 65), "annotation center is selection-local")
@@ -632,7 +632,7 @@ do {
     let selection = CaptureSelection(rect: CGRect(x: 30, y: 10, width: 40, height: 20))
     let document = ScreenshotDocument(selection: selection, workingScale: 2, baseImage: captured.image)
     document.add(Annotation(
-        kind: .rectangle(RectangleShape(center: CGPoint(x: 20, y: 10), size: CGSize(width: 10, height: 8), angle: 0, mosaic: 0)),
+        kind: .rectangle(RectangleShape(center: CGPoint(x: 20, y: 10), size: CGSize(width: 10, height: 8), angle: 0, filled: false)),
         color: .annotationYellow,
         lineWidth: 3
     ))
@@ -694,6 +694,45 @@ do {
         } else {
             check(false, "composition color sampling")
         }
+    }
+}
+
+// MARK: - Filled rectangle composition
+
+do {
+    let source = makeTestImage(width: 200, height: 120)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 200, height: 120),
+        image: source,
+        workingScale: 1
+    )
+    let selection = CaptureSelection(rect: CGRect(x: 0, y: 0, width: 100, height: 50))
+    let document = ScreenshotDocument(selection: selection, workingScale: 1, baseImage: captured.image)
+    let filled = Annotation(
+        kind: .rectangle(RectangleShape(
+            center: CGPoint(x: 50, y: 25),
+            size: CGSize(width: 40, height: 20),
+            angle: 0,
+            filled: true
+        )),
+        color: RGBAColor(0, 1, 0),
+        lineWidth: 3
+    )
+    document.add(filled)
+    if let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured),
+       let color = sampledColor(composed, x: 50, y: 25) {
+        check(color.1 > 200 && color.0 < 80 && color.2 < 80, "filled rectangle uses its outline color")
+    } else {
+        check(false, "filled rectangle composition")
+    }
+
+    document.setSelected(filled.id)
+    document.updateSelected(filled: false)
+    if let composed = ScreenshotComposer.composeSelection(document: document, capturedScreen: captured),
+       let color = sampledColor(composed, x: 50, y: 25) {
+        check(!(color.1 > 200 && color.0 < 80 && color.2 < 80), "non-filled rectangle leaves the center transparent")
+    } else {
+        check(false, "non-filled rectangle composition")
     }
 }
 

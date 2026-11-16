@@ -57,20 +57,14 @@ enum AnnotationRenderer {
         _ annotations: [Annotation],
         in context: CGContext,
         scale: CGFloat,
-        selectionHeight: CGFloat,
-        selectionOrigin: CGPoint,
-        baseImage: CGImage?,
-        mosaicImages: [UUID: CGImage] = [:]
+        selectionHeight: CGFloat
     ) {
         for annotation in annotations {
             draw(
                 annotation,
                 in: context,
                 scale: scale,
-                selectionHeight: selectionHeight,
-                selectionOrigin: selectionOrigin,
-                baseImage: baseImage,
-                mosaicImage: mosaicImages[annotation.id]
+                selectionHeight: selectionHeight
             )
         }
     }
@@ -79,10 +73,7 @@ enum AnnotationRenderer {
         _ annotation: Annotation,
         in context: CGContext,
         scale: CGFloat,
-        selectionHeight: CGFloat,
-        selectionOrigin: CGPoint,
-        baseImage: CGImage?,
-        mosaicImage: CGImage? = nil
+        selectionHeight: CGFloat
     ) {
         switch annotation.kind {
         case .rectangle(let shape):
@@ -92,10 +83,7 @@ enum AnnotationRenderer {
                 lineWidth: annotation.lineWidth,
                 in: context,
                 scale: scale,
-                selectionHeight: selectionHeight,
-                selectionOrigin: selectionOrigin,
-                baseImage: baseImage,
-                mosaicImage: mosaicImage
+                selectionHeight: selectionHeight
             )
         case .line(let shape):
             drawLine(
@@ -134,10 +122,7 @@ enum AnnotationRenderer {
         lineWidth: CGFloat,
         in context: CGContext,
         scale: CGFloat,
-        selectionHeight: CGFloat,
-        selectionOrigin: CGPoint,
-        baseImage: CGImage?,
-        mosaicImage: CGImage?
+        selectionHeight: CGFloat
     ) {
         let center = CGPoint(
             x: shape.center.x * scale,
@@ -151,35 +136,6 @@ enum AnnotationRenderer {
         context.translateBy(x: center.x, y: center.y)
         context.rotate(by: -shape.angle)
 
-        if shape.mosaic > 0 {
-            var mosaic = mosaicImage
-            if mosaic == nil, let baseImage {
-                let selectionRect = CGRect(origin: selectionOrigin, size: .zero)
-                let center = AnnotationSpace.screen(fromLocal: shape.center, selection: selectionRect)
-                let screenRect = CGRect(
-                    x: center.x - shape.size.width / 2,
-                    y: center.y - shape.size.height / 2,
-                    width: shape.size.width,
-                    height: shape.size.height
-                )
-                mosaic = MosaicRenderer.pixelatedImage(
-                    baseImage: baseImage,
-                    screenRect: screenRect,
-                    workingScale: scale,
-                    block: shape.mosaic * 2
-                )
-            }
-            if let mosaic {
-                let rect = CGRect(
-                    x: -pixelWidth / 2,
-                    y: -pixelHeight / 2,
-                    width: pixelWidth,
-                    height: pixelHeight
-                )
-                MosaicRenderer.drawPixelated(mosaic, in: context, rect: rect)
-            }
-        }
-
         let path = CGPath(
             rect: CGRect(
                 x: -pixelWidth / 2,
@@ -190,6 +146,11 @@ enum AnnotationRenderer {
             transform: nil
         )
         context.addPath(path)
+        if shape.filled {
+            context.setFillColor(color.cgColor)
+            context.fillPath()
+            context.addPath(path)
+        }
         context.setStrokeColor(color.cgColor)
         context.setLineWidth(max(1, lineWidth * scale))
         context.setLineJoin(.miter)

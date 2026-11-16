@@ -95,11 +95,13 @@ final class ScreenshotController {
         state = .capturing
         installEventMonitor()
         createChromeIfNeeded()
+        ScreenshotToast.shared.hide()
 
         let mouse = NSEvent.mouseLocation
         let screen = screen(containing: mouse) ?? NSScreen.main ?? NSScreen.screens[0]
         createOverlays()
         activateScreen(screen)
+        setPinsVisibleDuringOverlay(true)
         onActiveChanged?(true)
 
         captureService.capture(screen: screen) { [weak self] result in
@@ -144,6 +146,7 @@ final class ScreenshotController {
     private func cleanup(restoreApp: Bool) {
         if state == .idle { return }
         let pinnedEditor = editingPin
+        setPinsVisibleDuringOverlay(false)
         captureService.cancel()
         removeEventMonitor()
         textEditor?.end()
@@ -151,6 +154,7 @@ final class ScreenshotController {
         hud?.hide()
         toolbar?.hideToolbar()
         ColorPalettePanel.shared.dismissAll()
+        ScreenshotToast.shared.hide()
         NSColorPanel.shared.orderOut(nil)
         NSColorPanel.shared.level = .floating
         for overlay in overlays {
@@ -723,7 +727,7 @@ final class ScreenshotController {
                 center: point,
                 size: CGSize(width: 1, height: 1),
                 angle: 0,
-                mosaic: defaults.rectangleMosaic
+                filled: defaults.rectangleFilled
             )),
             color: defaults.rectangleColor,
             lineWidth: defaults.rectangleWidth
@@ -1009,7 +1013,7 @@ final class ScreenshotController {
             toolbar.onSave = { [weak self] in self?.saveSelection() }
             toolbar.onColorChanged = { [weak self] color in self?.applyColor(color) }
             toolbar.onWidthChanged = { [weak self] width in self?.applyWidth(width) }
-            toolbar.onMosaicChanged = { [weak self] mosaic in self?.applyMosaic(mosaic) }
+            toolbar.onFilledChanged = { [weak self] filled in self?.applyFilled(filled) }
             toolbar.onLinePatternChanged = { [weak self] pattern in self?.applyLinePattern(pattern) }
             toolbar.onArrowChanged = { [weak self] isStart, style in self?.applyArrow(isStart: isStart, style: style) }
             toolbar.onFontChanged = { [weak self] name in self?.applyFont(name) }
@@ -1054,16 +1058,13 @@ final class ScreenshotController {
     }
 
     private func applyColor(_ color: RGBAColor) {
+        // A color picked for an existing annotation is also the latest color
+        // for everything drawn afterwards, regardless of the tool.
+        defaults.rectangleColor = color
+        defaults.lineColor = color
+        defaults.textColor = color
         if let document, document.selectedAnnotation != nil {
             document.updateSelected(color: color)
-        } else {
-            switch tool {
-            case .rectangle: defaults.rectangleColor = color
-            case .line: defaults.lineColor = color
-            case .text: defaults.textColor = color
-            case .pointer: return
-            case .eraser: return
-            }
         }
         refreshToolbar()
     }
@@ -1086,11 +1087,10 @@ final class ScreenshotController {
         refreshToolbar()
     }
 
-    private func applyMosaic(_ mosaic: CGFloat) {
+    private func applyFilled(_ filled: Bool) {
+        defaults.rectangleFilled = filled
         if let document, let selected = document.selectedAnnotation, case .rectangle = selected.kind {
-            document.updateSelected(mosaic: mosaic)
-        } else {
-            defaults.rectangleMosaic = mosaic
+            document.updateSelected(filled: filled)
         }
         refreshToolbar()
     }
@@ -1271,6 +1271,7 @@ final class ScreenshotController {
     private func hideChromeForModal() {
         if textEditor?.isVisible == true { textEditor?.commitNow() }
         ColorPalettePanel.shared.dismissAll()
+        ScreenshotToast.shared.hide()
         for overlay in overlays { overlay.orderOut(nil) }
         hud?.hide()
         toolbar?.hideToolbar()
@@ -1285,47 +1286,30 @@ final class ScreenshotController {
         updateHUD()
     }
 
-    private func prepareMosaicCache(
-        document: ScreenshotDocument,
-        captured: CapturedScreen
-    ) -> [UUID: CGImage] {
-        guard let baseImage = captured.image else { return [:] }
-        var result: [UUID: CGImage] = [:]
-        for annotation in document.annotations {
-            guard case .rectangle(let shape) = annotation.kind, shape.mosaic > 0 else { continue }
-            let center = AnnotationSpace.screen(fromLocal: shape.center, selection: document.selection.rect)
-            let screenRect = CGRect(
-                x: center.x - shape.size.width / 2,
-                y: center.y - shape.size.height / 2,
-                width: shape.size.width,
-                height: shape.size.height
-            )
-            if let image = MosaicRenderer.pixelatedImage(
-                baseImage: baseImage,
-                screenRect: screenRect,
-                workingScale: captured.workingScale,
-                block: shape.mosaic * 2
-            ) {
-                result[annotation.id] = image
-            }
-        }
-        return result
-    }
-
     private func copySelectionToPasteboard() {
         guard state == .editing, let document, let captured else { return }
         document.rebuildFrozen()
-        let mosaicImages = prepareMosaicCache(document: document, captured: captured)
         guard let image = ScreenshotComposer.composeSelection(
             document: document,
-            capturedScreen: captured,
-            mosaicImages: mosaicImages
+            capturedScreen: captured
         ) else {
             return
         }
         guard ScreenshotPasteboard.copy(image: image) else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        showCopyToast()
         statusBar?.showTransientTooltip("已复制到剪贴板")
+    }
+
+    private func showCopyToast() {
+        guard let selection, let screen = activeScreen else { return }
+        let rect = CGRect(
+            x: screen.frame.minX + selection.rect.minX,
+            y: screen.frame.maxY - selection.rect.maxY,
+            width: selection.rect.width,
+            height: selection.rect.height
+        )
+        ScreenshotToast.shared.show("已复制到剪贴板", near: rect, on: screen)
     }
 
     private func saveSelection() {
@@ -1348,11 +1332,9 @@ final class ScreenshotController {
         }
 
         document.rebuildFrozen()
-        let mosaicImages = prepareMosaicCache(document: document, captured: captured)
         guard let image = ScreenshotComposer.composeSelection(
             document: document,
-            capturedScreen: captured,
-            mosaicImages: mosaicImages
+            capturedScreen: captured
         ) else {
             state = .editing
             showChromeAfterModal()
@@ -1386,12 +1368,10 @@ final class ScreenshotController {
         }
 
         document.rebuildFrozen()
-        let mosaicImages = prepareMosaicCache(document: document, captured: captured)
         hideChromeForModal()
         guard let image = ScreenshotComposer.composeSelection(
             document: document,
-            capturedScreen: captured,
-            mosaicImages: mosaicImages
+            capturedScreen: captured
         ) else {
             cleanup(restoreApp: true)
             showError("无法贴图", detail: "无法生成贴图图像。")
@@ -1478,8 +1458,10 @@ final class ScreenshotController {
         NSApp.activate(ignoringOtherApps: true)
         installEventMonitor()
         createChromeIfNeeded()
+        ScreenshotToast.shared.hide()
         createOverlays()
         activateScreen(screen)
+        setPinsVisibleDuringOverlay(true)
         refreshActiveOverlay()
         showToolbar()
         updateHUD()
@@ -1490,11 +1472,9 @@ final class ScreenshotController {
         var didApply = !apply
         if apply, let document, let captured {
             document.rebuildFrozen()
-            let mosaicImages = prepareMosaicCache(document: document, captured: captured)
             if let image = ScreenshotComposer.composeSelection(
                 document: document,
-                capturedScreen: captured,
-                mosaicImages: mosaicImages
+                capturedScreen: captured
             ) {
                 let session = PinEditingSession(capturedScreen: captured, document: document)
                 pin.update(
@@ -1513,6 +1493,12 @@ final class ScreenshotController {
             statusBar?.showTransientTooltip(didApply ? "贴图已更新，⌘C 复制" : "无法生成贴图图像")
         } else {
             statusBar?.showTransientTooltip("已取消编辑")
+        }
+    }
+
+    private func setPinsVisibleDuringOverlay(_ visible: Bool) {
+        for pin in pins where pin !== editingPin {
+            pin.setOverlayPassThrough(visible)
         }
     }
 

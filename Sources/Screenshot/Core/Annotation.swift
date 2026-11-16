@@ -61,7 +61,8 @@ struct RectangleShape: Equatable {
     var center: CGPoint
     var size: CGSize
     var angle: CGFloat
-    var mosaic: CGFloat
+    /// When true the rectangle is filled with the same color as its outline.
+    var filled: Bool
 
     var halfWidth: CGFloat { size.width / 2 }
     var halfHeight: CGFloat { size.height / 2 }
@@ -230,7 +231,7 @@ struct Annotation: Identifiable, Equatable {
     func hitTest(_ point: CGPoint, tolerance: CGFloat = 6) -> Bool {
         switch kind {
         case .rectangle(let shape):
-            if shape.mosaic > 0 && shape.contains(point) { return true }
+            if shape.filled && shape.contains(point) { return true }
             let corners = shape.corners
             for index in corners.indices {
                 let a = corners[index]
@@ -252,7 +253,7 @@ struct Annotation: Identifiable, Equatable {
     func intersectsBrush(center: CGPoint, radius: CGFloat) -> Bool {
         switch kind {
         case .rectangle(let shape):
-            if shape.mosaic > 0, shape.contains(center) { return true }
+            if shape.filled, shape.contains(center) { return true }
             let corners = shape.corners
             for index in corners.indices {
                 let a = corners[index]

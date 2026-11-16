@@ -28,9 +28,7 @@ final class FrozenRaster {
         selectionSize: CGSize,
         scale: CGFloat,
         frozen: [Annotation],
-        strokes: [EraseStroke],
-        baseImage: CGImage?,
-        selectionOrigin: CGPoint
+        strokes: [EraseStroke]
     ) {
         guard !frozen.isEmpty || !strokes.isEmpty else {
             release()
@@ -71,9 +69,7 @@ final class FrozenRaster {
             frozen,
             in: context,
             scale: frozenScale,
-            selectionHeight: selectionSize.height,
-            selectionOrigin: selectionOrigin,
-            baseImage: baseImage
+            selectionHeight: selectionSize.height
         )
         AnnotationRenderer.drawEraseStrokes(
             strokes,
@@ -215,7 +211,7 @@ final class ScreenshotDocument {
     func updateSelected(
         color: RGBAColor? = nil,
         lineWidth: CGFloat? = nil,
-        mosaic: CGFloat? = nil,
+        filled: Bool? = nil,
         fontName: String? = nil,
         fontSize: CGFloat? = nil,
         pushHistory: Bool = true
@@ -228,7 +224,7 @@ final class ScreenshotDocument {
         if let lineWidth { annotations[index].lineWidth = max(1, lineWidth) }
         switch annotations[index].kind {
         case .rectangle(var shape):
-            if let mosaic { shape.mosaic = max(0, mosaic); annotations[index].kind = .rectangle(shape) }
+            if let filled { shape.filled = filled; annotations[index].kind = .rectangle(shape) }
         case .line:
             break
         case .text(var shape):
@@ -302,9 +298,7 @@ final class ScreenshotDocument {
             selectionSize: selection.rect.size,
             scale: workingScale,
             frozen: frozenAnnotations,
-            strokes: eraseStrokes,
-            baseImage: baseImage,
-            selectionOrigin: selectionOrigin
+            strokes: eraseStrokes
         )
     }
 

@@ -7,8 +7,7 @@ enum ScreenshotComposer {
     /// corrupts the editor.
     static func composeSelection(
         document: ScreenshotDocument,
-        capturedScreen: CapturedScreen,
-        mosaicImages: [UUID: CGImage] = [:]
+        capturedScreen: CapturedScreen
     ) -> CGImage? {
         let scale = capturedScreen.workingScale
         let selection = document.selection.rect
@@ -55,10 +54,7 @@ enum ScreenshotComposer {
             document.annotations,
             in: context,
             scale: scale,
-            selectionHeight: document.selection.rect.height,
-            selectionOrigin: document.selectionOrigin,
-            baseImage: capturedScreen.image,
-            mosaicImages: mosaicImages
+            selectionHeight: document.selection.rect.height
         )
         return context.makeImage()
     }

@@ -10,7 +10,7 @@ final class CaptureToolbar: NSPanel {
     var onSave: (() -> Void)?
     var onColorChanged: ((RGBAColor) -> Void)?
     var onWidthChanged: ((CGFloat) -> Void)?
-    var onMosaicChanged: ((CGFloat) -> Void)?
+    var onFilledChanged: ((Bool) -> Void)?
     var onLinePatternChanged: ((LinePattern) -> Void)?
     var onArrowChanged: ((Bool, ArrowStyle) -> Void)?
     var onFontChanged: ((String) -> Void)?
@@ -31,8 +31,12 @@ final class CaptureToolbar: NSPanel {
     private let rectSwatch = ColorSwatchButton()
     private let rectWidthSlider = NSSlider()
     private let rectWidthLabel = NSTextField(labelWithString: "")
-    private let rectMosaicSlider = NSSlider()
-    private let rectMosaicLabel = NSTextField(labelWithString: "")
+    private let rectFillControl = NSSegmentedControl(
+        labels: ["非填充", "填充"],
+        trackingMode: .selectOne,
+        target: nil,
+        action: nil
+    )
 
     private let lineSwatch = ColorSwatchButton()
     private let lineWidthSlider = NSSlider()
@@ -106,8 +110,7 @@ final class CaptureToolbar: NSPanel {
                 rectSwatch.swatchColor = selected.color
                 rectWidthSlider.doubleValue = Double(selected.lineWidth)
                 rectWidthLabel.stringValue = String(format: "%.0f", selected.lineWidth)
-                rectMosaicSlider.doubleValue = Double(shape.mosaic)
-                rectMosaicLabel.stringValue = String(format: "%.0f", shape.mosaic)
+                rectFillControl.selectedSegment = shape.filled ? 1 : 0
             case .line(let shape):
                 row = lineRow
                 lineSwatch.swatchColor = selected.color
@@ -128,8 +131,7 @@ final class CaptureToolbar: NSPanel {
             rectSwatch.swatchColor = defaults.rectangleColor
             rectWidthSlider.doubleValue = Double(defaults.rectangleWidth)
             rectWidthLabel.stringValue = String(format: "%.0f", defaults.rectangleWidth)
-            rectMosaicSlider.doubleValue = Double(defaults.rectangleMosaic)
-            rectMosaicLabel.stringValue = String(format: "%.0f", defaults.rectangleMosaic)
+            rectFillControl.selectedSegment = defaults.rectangleFilled ? 1 : 0
         } else if tool == .line {
             row = lineRow
             lineSwatch.swatchColor = defaults.lineColor
@@ -231,7 +233,10 @@ final class CaptureToolbar: NSPanel {
 
     private func buildMainRow() {
         for tool in CaptureTool.allCases {
-            let button = makeIconButton(symbol: tool.symbolName, tooltip: tool.displayName)
+            let image = tool == .text
+                ? TextToolIcon.make()
+                : NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: tool.displayName)
+            let button = makeIconButton(image: image, tooltip: tool.displayName)
             button.tag = CaptureTool.allCases.firstIndex(of: tool) ?? 0
             button.target = self
             button.action = #selector(toolButtonAction(_:))
@@ -278,11 +283,11 @@ final class CaptureToolbar: NSPanel {
         styleValueLabel(rectWidthLabel)
         rectRow.addArrangedSubview(rectWidthLabel)
         rectRow.addArrangedSubview(separator())
-        rectRow.addArrangedSubview(label("马赛克"))
-        configureSlider(rectMosaicSlider, min: 0, max: 20, action: #selector(rectMosaicAction))
-        rectRow.addArrangedSubview(rectMosaicSlider)
-        styleValueLabel(rectMosaicLabel)
-        rectRow.addArrangedSubview(rectMosaicLabel)
+        rectRow.addArrangedSubview(label("模式"))
+        rectFillControl.target = self
+        rectFillControl.action = #selector(rectFillAction)
+        rectFillControl.controlSize = .small
+        rectRow.addArrangedSubview(rectFillControl)
     }
 
     private func buildLineRow() {
@@ -348,16 +353,24 @@ final class CaptureToolbar: NSPanel {
     }
 
     private func makeIconButton(symbol: String, tooltip: String) -> NSButton {
+        makeIconButton(
+            image: NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip),
+            tooltip: tooltip
+        )
+    }
+
+    private func makeIconButton(image: NSImage?, tooltip: String) -> NSButton {
         let button = NSButton()
         button.title = ""
         button.alternateTitle = ""
         button.attributedTitle = NSAttributedString(string: "")
         button.bezelStyle = .regularSquare
         button.isBordered = false
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)
+        button.image = image
         button.imagePosition = .imageOnly
         button.contentTintColor = NSColor.white.withAlphaComponent(0.9)
         button.toolTip = tooltip
+        button.setAccessibilityLabel(tooltip)
         button.wantsLayer = true
         button.layer?.cornerRadius = 5
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -486,11 +499,9 @@ final class CaptureToolbar: NSPanel {
         onWidthChanged?(value)
     }
 
-    @objc private func rectMosaicAction() {
+    @objc private func rectFillAction() {
         guard !isRefreshing else { return }
-        let value = CGFloat(rectMosaicSlider.doubleValue.rounded())
-        rectMosaicLabel.stringValue = String(format: "%.0f", value)
-        onMosaicChanged?(value)
+        onFilledChanged?(rectFillControl.selectedSegment == 1)
     }
 
     @objc private func linePatternAction() {
@@ -533,5 +544,32 @@ final class CaptureToolbar: NSPanel {
         let value = CGFloat(eraserSizeSlider.doubleValue.rounded())
         eraserSizeLabel.stringValue = String(format: "%.0f", value)
         onEraserSizeChanged?(value)
+    }
+}
+
+/// The toolbar's text tool uses a hand-drawn Latin "T" instead of an SF Symbol:
+/// text-related symbols such as `textformat` can be localized into Chinese
+/// glyphs ("格式" / "字") by the system font.
+enum TextToolIcon {
+    static func make() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+            let text = NSAttributedString(
+                string: "T",
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.black
+                ]
+            )
+            let textSize = text.size()
+            text.draw(at: NSPoint(
+                x: rect.midX - textSize.width / 2,
+                y: rect.midY - textSize.height / 2
+            ))
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }

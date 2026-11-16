@@ -3,7 +3,7 @@ import AppKit
 struct ScreenshotDefaults {
     var rectangleColor: RGBAColor = .annotationRed
     var rectangleWidth: CGFloat = 3
-    var rectangleMosaic: CGFloat = 0
+    var rectangleFilled: Bool = false
 
     var lineColor: RGBAColor = .annotationRed
     var lineWidth: CGFloat = 3

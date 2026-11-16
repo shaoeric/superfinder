@@ -47,9 +47,46 @@ if ! grep -q 'performKeyEquivalent' "$PIN"; then
   fail "贴图缺少 ⌘C 快捷键处理"
 fi
 
-# Text tool must use a language-neutral icon, not the localized "格式" glyph.
-if ! grep -q 'case .text: return "textbox"' "$HUD"; then
-  fail "文本工具仍使用会被本地化的 textformat 符号"
+# Text tool must draw the Latin letter T, never a localized text glyph.
+if ! grep -q 'string: "T"' "$TOOLBAR" || ! grep -q 'enum TextToolIcon' "$TOOLBAR"; then
+  fail "文本工具没有使用自绘的拉丁字母 T"
+fi
+
+# Rectangles use a filled/outline switch; mosaic rendering was removed.
+if ! grep -q 'var filled: Bool' "$ANNOTATION"; then
+  fail "矩形缺少 filled 填充状态"
+fi
+if grep -RIn 'mosaic\|Mosaic' Sources/Screenshot >/dev/null 2>&1; then
+  fail "矩形仍在引用已移除的马赛克实现"
+fi
+if ! grep -q 'rectFillControl' "$TOOLBAR"; then
+  fail "矩形属性栏缺少非填充/填充切换"
+fi
+
+# Latest picked color becomes the default for subsequent annotations.
+if ! grep -q 'defaults.rectangleColor = color' "$CONTROLLER" \
+   || ! grep -q 'defaults.lineColor = color' "$CONTROLLER" \
+   || ! grep -q 'defaults.textColor = color' "$CONTROLLER"; then
+  fail "颜色没有同步到后续标注的默认值"
+fi
+
+# Copy feedback and persistent pins above the overlay.
+if ! grep -q 'ScreenshotToast.shared.show' "$CONTROLLER" \
+   || ! grep -q 'showCopyToast' "$CONTROLLER"; then
+  fail "复制缺少可见提示"
+fi
+if ! grep -q 'setOverlayPassThrough' "$PIN" \
+   || ! grep -q 'setPinsVisibleDuringOverlay(true)' "$CONTROLLER"; then
+  fail "截图时已有贴图没有保持可见"
+fi
+
+# Esc closes and frees a focused pin.
+if ! grep -q 'override func cancelOperation' "$PIN" \
+   || ! grep -q 'keyCode == 53' "$PIN"; then
+  fail "贴图缺少 Esc 关闭处理"
+fi
+if ! grep -q 'editingSession = nil' "$PIN"; then
+  fail "关闭贴图没有释放编辑会话内存"
 fi
 
 # An inactive pinned window must accept the first click for dragging.
@@ -65,4 +102,4 @@ fi
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
-echo "截屏功能检查通过：文本编辑、文本图标、左上角旋转柄、⌘C、贴图工具条/首击拖拽、取色板。"
+echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图可见/首击拖拽/Esc释放、取色板。"

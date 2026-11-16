@@ -57,7 +57,49 @@ do {
     let iconButtons = toolbarButtons.filter { $0.image != nil }
     check(iconButtons.count >= 11, "toolbar exposes all icon buttons")
     check(iconButtons.allSatisfy { $0.title.isEmpty }, "toolbar icon buttons do not draw default titles")
-    checkEqual(CaptureTool.text.symbolName, "textbox", "text tool uses a language-neutral text-box symbol")
+    let fillControls = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? NSSegmentedControl } ?? []
+    check(
+        fillControls.contains {
+            $0.segmentCount == 2
+                && $0.label(forSegment: 0) == "非填充"
+                && $0.label(forSegment: 1) == "填充"
+        },
+        "rectangle properties expose the non-filled/filled switch"
+    )
+    let defaults = ScreenshotDefaults()
+    check(!defaults.rectangleFilled, "rectangles default to non-filled")
+
+    let textIcon = TextToolIcon.make()
+    checkEqual(textIcon.size, NSSize(width: 18, height: 18), "text tool has a fixed-size T icon")
+    check(textIcon.isTemplate, "text tool T icon follows the button tint")
+    if let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: 18,
+        pixelsHigh: 18,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        textIcon.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
+        NSGraphicsContext.restoreGraphicsState()
+        if let data = rep.bitmapData {
+            var ink = 0
+            for pixel in 0..<(18 * 18) where data[pixel * 4 + 3] > 10 {
+                ink += 1
+            }
+            check(ink > 20, "T icon actually draws visible ink")
+        } else {
+            check(false, "T icon bitmap data")
+        }
+    } else {
+        check(false, "T icon bitmap")
+    }
     check(toolbar.canBecomeKey, "screenshot toolbar can become key")
     check(
         toolbar.level.rawValue > NSWindow.Level.screenSaver.rawValue,
@@ -82,6 +124,11 @@ do {
     )
     check(!palette.isVisible, "palette is hidden until requested")
     palette.dismissAll()
+
+    let toast = ScreenshotToast.shared
+    check(toast.ignoresMouseEvents, "copy toast never intercepts clicks")
+    check(toast.level.rawValue > palette.level.rawValue, "copy toast is above the palette")
+    check(!toast.isVisible, "copy toast is hidden until requested")
 }
 
 // MARK: - Pinned image window
@@ -143,7 +190,33 @@ do {
     )
     check(pin.editingSession === session, "pin keeps its session after resize")
 
-    pin.orderOut(nil)
+    var pinClosed = false
+    pin.onClose = { pinClosed = true }
+    let other = PinnedImageWindow(
+        image: source,
+        pointSize: CGSize(width: 60, height: 40),
+        screenFrame: captured.appKitFrame,
+        editingSession: session
+    )
+    let escape = NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: pin.windowNumber,
+        context: nil,
+        characters: "\u{1b}",
+        charactersIgnoringModifiers: "\u{1b}",
+        isARepeat: false,
+        keyCode: 53
+    )!
+    tracking.keyDown(with: escape)
+    check(pinClosed, "Esc closes the focused pin")
+    check(!pin.isVisible, "closed pin is ordered out")
+    check(pin.image == nil && pin.imageData == nil, "closed pin releases its image data")
+    check(pin.editingSession == nil, "closed pin releases its editing session")
+    check(other.image != nil && other.editingSession != nil, "closing one pin leaves other pins intact")
+    other.close()
 }
 
 print("")
