@@ -307,17 +307,21 @@ struct Annotation: Identifiable, Equatable {
         }
     }
 
+    /// Delete affordance, pushed well outside the oriented box so it does not
+    /// collide with the corner resize handle or the line endpoints.
     func deleteHandlePoint() -> CGPoint {
         let outline = selectionOutlinePoints()
         let topRight = outline[1]
-        return CGPoint(x: topRight.x + 12, y: topRight.y - 12)
+        return CGPoint(x: topRight.x + 22, y: topRight.y - 22)
     }
 
+    /// Rotation affordance for rectangles. Kept further along the local "up"
+    /// direction so it is clearly separate from the delete button.
     func rotationHandlePoint() -> CGPoint? {
         guard case .rectangle(let shape) = kind else { return nil }
         let topRight = shape.localToScreen(CGPoint(x: shape.halfWidth, y: -shape.halfHeight))
         let up = CGPoint(x: sin(shape.angle), y: -cos(shape.angle))
-        return CGPoint(x: topRight.x + up.x * 26, y: topRight.y + up.y * 26)
+        return CGPoint(x: topRight.x + up.x * 36, y: topRight.y + up.y * 36)
     }
 
     mutating func move(by delta: CGPoint) {

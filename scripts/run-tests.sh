@@ -36,3 +36,5 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
 "$ROOT/scripts/check-low-power.sh"
 
 "$BUILD/superfinder-tests"
+
+"$ROOT/scripts/run-overlay-tests.sh"

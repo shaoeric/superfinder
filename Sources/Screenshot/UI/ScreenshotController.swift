@@ -437,13 +437,10 @@ final class ScreenshotController {
         document: ScreenshotDocument
     ) {
         if let selected = document.selectedAnnotation {
-            if hypot(annotationLocal.x - selected.deleteHandlePoint().x, annotationLocal.y - selected.deleteHandlePoint().y) <= 12 {
-                document.removeSelected()
-                refreshAfterDocumentChange()
-                return
-            }
+            // Order matters: rotation and resize handles win over delete, so a
+            // near-corner drag never accidentally deletes the annotation.
             if let rotation = selected.rotationHandlePoint(),
-               hypot(annotationLocal.x - rotation.x, annotationLocal.y - rotation.y) <= 13 {
+               hypot(annotationLocal.x - rotation.x, annotationLocal.y - rotation.y) <= 12 {
                 if case .rectangle(let shape) = selected.kind {
                     let center = shape.center
                     let startAngle = atan2(annotationLocal.y - center.y, annotationLocal.x - center.x)
@@ -455,7 +452,7 @@ final class ScreenshotController {
                 return
             }
             for (index, handle) in selected.handlesForEditing().enumerated() {
-                if hypot(annotationLocal.x - handle.x, annotationLocal.y - handle.y) <= 10 {
+                if hypot(annotationLocal.x - handle.x, annotationLocal.y - handle.y) <= 12 {
                     document.beginChange()
                     dragMode = .resizeAnnotation(selected.id, index)
                     dragStartPoint = screenLocal
@@ -463,6 +460,11 @@ final class ScreenshotController {
                     dragHistoryPushed = true
                     return
                 }
+            }
+            if hypot(annotationLocal.x - selected.deleteHandlePoint().x, annotationLocal.y - selected.deleteHandlePoint().y) <= 9 {
+                document.removeSelected()
+                refreshAfterDocumentChange()
+                return
             }
             if selected.hitTest(annotationLocal) {
                 document.setSelected(selected.id)
@@ -879,14 +881,13 @@ final class ScreenshotController {
             cursor = .crosshair
         case .pointer:
             if let selected = document.selectedAnnotation {
-                if hypot(annotationLocal.x - selected.deleteHandlePoint().x, annotationLocal.y - selected.deleteHandlePoint().y) <= 12 {
-                    cursor = .pointingHand
-                } else if let rotation = selected.rotationHandlePoint(),
-                          hypot(annotationLocal.x - rotation.x, annotationLocal.y - rotation.y) <= 13 {
+                if let rotation = selected.rotationHandlePoint(),
+                   hypot(annotationLocal.x - rotation.x, annotationLocal.y - rotation.y) <= 12 {
                     cursor = .pointingHand
                 } else if let handle = nearestHandle(of: selected, to: annotationLocal) {
                     cursor = cursorFor(handle: handle.index, selection: false)
-                    _ = handle
+                } else if hypot(annotationLocal.x - selected.deleteHandlePoint().x, annotationLocal.y - selected.deleteHandlePoint().y) <= 9 {
+                    cursor = .pointingHand
                 } else if selected.hitTest(annotationLocal) {
                     cursor = .openHand
                 } else if selection.contains(point) {
@@ -931,7 +932,7 @@ final class ScreenshotController {
 
     private func nearestHandle(of annotation: Annotation, to point: CGPoint) -> (index: Int, point: CGPoint)? {
         for (index, handle) in annotation.handlesForEditing().enumerated() {
-            if hypot(point.x - handle.x, point.y - handle.y) <= 10 {
+            if hypot(point.x - handle.x, point.y - handle.y) <= 12 {
                 return (index, handle)
             }
         }

@@ -452,6 +452,32 @@ do {
     checkEqual(document.frozenAnnotations.count, 1, "redo restores frozen line")
 }
 
+// MARK: - Delete / rotate / resize hit separation
+
+do {
+    let rect = Annotation(
+        kind: .rectangle(RectangleShape(center: CGPoint(x: 300, y: 200), size: CGSize(width: 200, height: 120), angle: 0, mosaic: 0)),
+        color: .annotationRed,
+        lineWidth: 3
+    )
+    let deletePoint = rect.deleteHandlePoint()
+    let rotationPoint = rect.rotationHandlePoint()!
+    let topRight = rect.handlesForEditing()[2]
+    check(hypot(deletePoint.x - topRight.x, deletePoint.y - topRight.y) > 21, "delete button clear of corner resize handle")
+    check(hypot(deletePoint.x - rotationPoint.x, deletePoint.y - rotationPoint.y) > 21, "delete button clear of rotation handle")
+    check(hypot(rotationPoint.x - topRight.x, rotationPoint.y - topRight.y) > 21, "rotation handle clear of corner resize handle")
+
+    let line = Annotation(
+        kind: .line(LineShape(start: CGPoint(x: 50, y: 50), end: CGPoint(x: 250, y: 50), pattern: .solid, startArrow: .none, endArrow: .none)),
+        color: .annotationYellow,
+        lineWidth: 3
+    )
+    let lineDelete = line.deleteHandlePoint()
+    for endpoint in line.handlesForEditing() {
+        check(hypot(lineDelete.x - endpoint.x, lineDelete.y - endpoint.y) > 21, "delete button clear of line endpoint")
+    }
+}
+
 // MARK: - Annotation coordinate space
 
 do {

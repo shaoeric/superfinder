@@ -9,7 +9,7 @@
 - 后台自动启动（LaunchAgent），无悬浮球、无 Dock 图标
 - 单例运行：重复启动会唤起已运行的实例并打开设置，不会产生第二个进程
 
-当前版本：1.1.2（本地 ad-hoc 签名，非 App Store、非公证）。
+当前版本：1.1.3（本地 ad-hoc 签名，非 App Store、非公证）。
 
 ## 功能
 
@@ -263,6 +263,14 @@ MacBook 刘海屏的菜单栏空间有限，当图标多到放不下时，macOS 
 ```bash
 ./scripts/check-low-power.sh
 ```
+
+离屏渲染测试（不需要屏幕录制权限）：
+
+```bash
+./scripts/run-overlay-tests.sh
+```
+
+它用一块合成的 2x 屏幕渲染真实的 `CaptureOverlayView` 图层树，检查非零原点选区下标注是否落在正确位置，因此坐标/手柄回归可以在不弹系统授权的情况下验证。
 
 它检查截屏渲染和命令队列中是否出现 Timer/display link/轮询渲染 API。
 
