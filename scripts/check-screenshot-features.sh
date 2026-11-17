@@ -48,7 +48,7 @@ if ! grep -q 'performKeyEquivalent' "$PIN"; then
 fi
 
 # Text tool must draw the Latin letter T, never a localized text glyph.
-if ! grep -q 'string: "T"' "$TOOLBAR" || ! grep -q 'enum TextToolIcon' "$TOOLBAR"; then
+if ! grep -q 'enum TextToolIcon' "$TOOLBAR" || ! grep -q 'path.lineWidth = 1.5' "$TOOLBAR"; then
   fail "文本工具没有使用自绘的拉丁字母 T"
 fi
 
@@ -75,9 +75,9 @@ if ! grep -q 'ScreenshotToast.shared.show' "$CONTROLLER" \
    || ! grep -q 'showCopyToast' "$CONTROLLER"; then
   fail "复制缺少可见提示"
 fi
-if ! grep -q 'setOverlayPassThrough' "$PIN" \
-   || ! grep -q 'setPinsVisibleDuringOverlay(true)' "$CONTROLLER"; then
-  fail "截图时已有贴图没有保持可见"
+if ! grep -q 'ScreenCompositor' "$CONTROLLER" \
+   || ! grep -q 'orderedWindows' "$CONTROLLER"; then
+  fail "新截图没有把已有贴图合成进基础截图"
 fi
 
 # Esc closes and frees a focused pin.
@@ -102,4 +102,4 @@ fi
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
-echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图可见/首击拖拽/Esc释放、取色板。"
+echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板。"

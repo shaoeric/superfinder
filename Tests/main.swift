@@ -655,6 +655,47 @@ do {
     check(editable.canUndo, "editing copy keeps undo history")
 }
 
+// MARK: - Pin compositing into a new screenshot
+
+do {
+    let baseSource = makeTestImage(width: 100, height: 50)
+    let captured = try! CapturedScreen(
+        screenFrame: CGRect(x: 0, y: 0, width: 100, height: 50),
+        image: baseSource,
+        workingScale: 1
+    )
+    let greenContext = CGContext(
+        data: nil,
+        width: 20,
+        height: 10,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    greenContext.setFillColor(NSColor.green.cgColor)
+    greenContext.fill(CGRect(x: 0, y: 0, width: 20, height: 10))
+    let pinImage = greenContext.makeImage()!
+    let composite = ScreenCompositor.compositing(
+        captured,
+        overlays: [ScreenOverlayImage(frame: CGRect(x: 10, y: 5, width: 20, height: 10), image: pinImage)]
+    )
+    check(composite != nil, "pin compositing produces a capture")
+    if let composite, let pixel = sampledColor(composite.image!, x: 15, y: 8) {
+        check(pixel.1 > 150 && pixel.0 < 100 && pixel.2 < 100, "pin is drawn at its screen position")
+    } else {
+        check(false, "pin compositing pixel sampling")
+    }
+    if let composite {
+        if let top = sampledColor(composite.image!, x: 15, y: 20) {
+            check(top.0 > 180 && top.2 < 100, "pin compositing preserves the base top orientation")
+        }
+        if let bottom = sampledColor(composite.image!, x: 15, y: 45) {
+            check(bottom.2 > 180 && bottom.0 < 100, "pin compositing preserves the base bottom orientation")
+        }
+    }
+}
+
 // MARK: - Native Retina composition
 
 do {

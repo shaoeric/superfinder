@@ -58,14 +58,14 @@ do {
     check(iconButtons.count >= 11, "toolbar exposes all icon buttons")
     check(iconButtons.allSatisfy { $0.title.isEmpty }, "toolbar icon buttons do not draw default titles")
     let fillControls = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? NSSegmentedControl } ?? []
-    check(
-        fillControls.contains {
-            $0.segmentCount == 2
-                && $0.label(forSegment: 0) == "非填充"
-                && $0.label(forSegment: 1) == "填充"
-        },
-        "rectangle properties expose the non-filled/filled switch"
-    )
+    if let fill = fillControls.first(where: { $0.segmentCount == 2 }) {
+        check(fill.image(forSegment: 0) != nil, "mode switch has an outline rectangle icon")
+        check(fill.image(forSegment: 1) != nil, "mode switch has a filled rectangle icon")
+        checkEqual(fill.selectedSegment, 0, "mode switch initially highlights non-filled")
+        check(fill.trackingMode == .selectOne, "mode switch highlights the current selection")
+    } else {
+        check(false, "rectangle properties expose the non-filled/filled switch")
+    }
     let defaults = ScreenshotDefaults()
     check(!defaults.rectangleFilled, "rectangles default to non-filled")
 
@@ -178,7 +178,7 @@ do {
     check(handled, "pin handles ⌘C as a key equivalent")
     check(copied, "pin routes ⌘C to its copy action")
 
-    pin.setFrameOrigin(CGPoint(x: 100, y: 100))
+    pin.setFrameOrigin(CGPoint(x: 300, y: 300))
     let frameBefore = pin.frame
     pin.update(image: source, pointSize: CGSize(width: 120, height: 80), editingSession: session)
     checkEqual(pin.displaySize, CGSize(width: 120, height: 80), "pin updates its display size")

@@ -13,7 +13,6 @@ final class PinnedImageWindow: NSPanel, NSWindowDelegate {
     private let trackingView: PinTrackingView
     var onClose: (() -> Void)?
     var onShowToolbar: (() -> Void)?
-    private var preOverlayLevel: NSWindow.Level?
 
     init(
         image: CGImage,
@@ -104,26 +103,6 @@ final class PinnedImageWindow: NSPanel, NSWindowDelegate {
         trackingView.frame = CGRect(origin: .zero, size: pointSize)
         imageLayer.frame = trackingView.bounds
         closeButton.frame = CGRect(x: pointSize.width - 24, y: pointSize.height - 24, width: 18, height: 18)
-    }
-
-    /// Keeps an existing pin visible above the screenshot overlay while the
-    /// user is selecting/annotating. Clicks pass through to the overlay so the
-    /// pin never steals a selection drag.
-    func setOverlayPassThrough(_ active: Bool) {
-        if active {
-            if preOverlayLevel == nil {
-                preOverlayLevel = level
-            }
-            level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
-            ignoresMouseEvents = true
-        } else {
-            if let preOverlayLevel {
-                level = preOverlayLevel
-                self.preOverlayLevel = nil
-            }
-            ignoresMouseEvents = false
-        }
-        orderFrontRegardless()
     }
 
     func copyToPasteboard() {

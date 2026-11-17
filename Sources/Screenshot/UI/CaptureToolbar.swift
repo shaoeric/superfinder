@@ -31,12 +31,29 @@ final class CaptureToolbar: NSPanel {
     private let rectSwatch = ColorSwatchButton()
     private let rectWidthSlider = NSSlider()
     private let rectWidthLabel = NSTextField(labelWithString: "")
-    private let rectFillControl = NSSegmentedControl(
-        labels: ["非填充", "填充"],
-        trackingMode: .selectOne,
-        target: nil,
-        action: nil
-    )
+    private let rectFillControl: NSSegmentedControl = {
+        let control = NSSegmentedControl(
+            images: [
+                NSImage(systemSymbolName: "rectangle", accessibilityDescription: "非填充")
+                    ?? NSImage(size: NSSize(width: 16, height: 12)),
+                NSImage(systemSymbolName: "rectangle.fill", accessibilityDescription: "填充")
+                    ?? NSImage(size: NSSize(width: 16, height: 12))
+            ],
+            trackingMode: .selectOne,
+            target: nil,
+            action: nil
+        )
+        control.segmentStyle = .rounded
+        control.controlSize = .small
+        control.appearance = NSAppearance(named: .darkAqua)
+        control.setToolTip("非填充", forSegment: 0)
+        control.setToolTip("填充", forSegment: 1)
+        control.setWidth(28, forSegment: 0)
+        control.setWidth(28, forSegment: 1)
+        control.selectedSegment = 0
+        control.setAccessibilityLabel("矩形填充模式")
+        return control
+    }()
 
     private let lineSwatch = ColorSwatchButton()
     private let lineWidthSlider = NSSlider()
@@ -553,20 +570,20 @@ final class CaptureToolbar: NSPanel {
 enum TextToolIcon {
     static func make() -> NSImage {
         let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let font = NSFont.systemFont(ofSize: 16, weight: .semibold)
-            let text = NSAttributedString(
-                string: "T",
-                attributes: [
-                    .font: font,
-                    .foregroundColor: NSColor.black
-                ]
-            )
-            let textSize = text.size()
-            text.draw(at: NSPoint(
-                x: rect.midX - textSize.width / 2,
-                y: rect.midY - textSize.height / 2
-            ))
+        let image = NSImage(size: size, flipped: false) { _ in
+            // A hand-drawn Latin T at the same 1.5 pt stroke weight as the
+            // surrounding SF Symbols. Drawing the glyph as a path avoids both
+            // localized text symbols and an overly bold font weight.
+            let path = NSBezierPath()
+            path.lineWidth = 1.5
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            path.move(to: NSPoint(x: 4.0, y: 13.5))
+            path.line(to: NSPoint(x: 14.0, y: 13.5))
+            path.move(to: NSPoint(x: 9.0, y: 13.5))
+            path.line(to: NSPoint(x: 9.0, y: 4.5))
+            NSColor.black.setStroke()
+            path.stroke()
             return true
         }
         image.isTemplate = true

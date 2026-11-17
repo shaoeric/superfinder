@@ -101,14 +101,13 @@ final class ScreenshotController {
         let screen = screen(containing: mouse) ?? NSScreen.main ?? NSScreen.screens[0]
         createOverlays()
         activateScreen(screen)
-        setPinsVisibleDuringOverlay(true)
         onActiveChanged?(true)
 
         captureService.capture(screen: screen) { [weak self] result in
             guard let self, self.state == .capturing, !self.screensDiffer(screen, self.activeScreen) else { return }
             switch result {
             case .success(let captured):
-                self.captured = captured
+                self.captured = self.compositePins(into: captured, on: screen)
                 self.state = .selecting
                 self.activateScreen(screen)
                 self.log.info("Screenshot capture ready: \(captured.pixelWidth)x\(captured.pixelHeight, privacy: .public)")
@@ -146,7 +145,6 @@ final class ScreenshotController {
     private func cleanup(restoreApp: Bool) {
         if state == .idle { return }
         let pinnedEditor = editingPin
-        setPinsVisibleDuringOverlay(false)
         captureService.cancel()
         removeEventMonitor()
         textEditor?.end()
@@ -283,7 +281,7 @@ final class ScreenshotController {
             guard let self, let window, self.state == .capturing, window === self.activeOverlay else { return }
             switch result {
             case .success(let captured):
-                self.captured = captured
+                self.captured = self.compositePins(into: captured, on: screen)
                 self.state = .selecting
                 self.activateScreen(screen)
             case .failure(let error):
@@ -1461,7 +1459,6 @@ final class ScreenshotController {
         ScreenshotToast.shared.hide()
         createOverlays()
         activateScreen(screen)
-        setPinsVisibleDuringOverlay(true)
         refreshActiveOverlay()
         showToolbar()
         updateHUD()
@@ -1496,10 +1493,28 @@ final class ScreenshotController {
         }
     }
 
-    private func setPinsVisibleDuringOverlay(_ visible: Bool) {
-        for pin in pins where pin !== editingPin {
-            pin.setOverlayPassThrough(visible)
+    /// Pins are excluded from ScreenCaptureKit, so draw them into the captured
+    /// base image ourselves. The new overlay stays above the live pins and the
+    /// user can select a pinned image to screenshot it again.
+    private func compositePins(into captured: CapturedScreen, on screen: NSScreen) -> CapturedScreen {
+        let orderedPins = NSApp.orderedWindows.compactMap { $0 as? PinnedImageWindow }
+        guard !orderedPins.isEmpty else { return captured }
+
+        var overlays: [ScreenOverlayImage] = []
+        for pin in orderedPins.reversed() where pin.isVisible {
+            guard let image = pin.image else { continue }
+            let frame = pin.frame
+            guard frame.intersects(screen.frame) else { continue }
+            let localFrame = CGRect(
+                x: frame.minX - screen.frame.minX,
+                y: screen.frame.maxY - frame.maxY,
+                width: frame.width,
+                height: frame.height
+            )
+            overlays.append(ScreenOverlayImage(frame: localFrame, image: image))
         }
+        guard !overlays.isEmpty else { return captured }
+        return ScreenCompositor.compositing(captured, overlays: overlays) ?? captured
     }
 
     private func presentPin(_ pin: PinnedImageWindow) {
