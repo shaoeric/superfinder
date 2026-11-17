@@ -312,6 +312,7 @@ final class ScreenshotController {
     private func mouseExited(over window: CaptureOverlayWindow) {
         guard window === activeOverlay else { return }
         window.showCrosshair(at: nil)
+        hud?.updateColor(nil)
     }
 
     private func mouseMoved(over window: CaptureOverlayWindow, viewPoint: CGPoint) {
@@ -320,15 +321,18 @@ final class ScreenshotController {
         mouseScreenLocal = local
         switch state {
         case .selecting:
-            // The guide follows the pointer; the HUD is intentionally not
-            // touched here, so moving the mouse does not relayout live text.
+            // The guide follows the pointer. Only the small color chip is
+            // updated; the size label is never re-laid out on mouse movement.
             window.showCrosshair(at: local)
+            updateHUDColor()
         case .editing:
             window.showCrosshair(at: nil)
             updateHover(at: local)
             updateBrushCursor(at: local)
+            updateHUDColor()
         case .idle, .capturing, .saving:
             window.showCrosshair(at: nil)
+            hud?.updateColor(nil)
         }
     }
 
@@ -1242,6 +1246,15 @@ final class ScreenshotController {
             case "l": selectTool(.line); return true
             case "t": selectTool(.text); return true
             case "e": selectTool(.eraser); return true
+            case "c":
+                // Plain C is the color-picker shortcut outside text entry.
+                // The text editor handles C itself because key events return
+                // early while it is visible. Always consume the key so it
+                // cannot leak into another app.
+                if tool != .text {
+                    copyCurrentPickColor()
+                }
+                return true
             default: break
             }
         }
@@ -1297,9 +1310,58 @@ final class ScreenshotController {
         guard state == .editing || state == .selecting,
               let selection, let screen = activeScreen, let captured else {
             hud?.hide()
+            hud?.updateColor(nil)
             return
         }
         hud?.update(screen: screen, selection: selection, captured: captured)
+        updateHUDColor()
+    }
+
+    /// Updates only the HUD color chip for the current pointer. This is called
+    /// from mouse-move events and never changes the size label's layout.
+    private func updateHUDColor() {
+        guard state == .editing || state == .selecting,
+              let selection,
+              selection.contains(mouseScreenLocal),
+              let captured,
+              let color = captured.pixelColor(atScreenPoint: mouseScreenLocal) else {
+            hud?.updateColor(nil)
+            return
+        }
+        hud?.updateColor(NSColor(
+            srgbRed: CGFloat(color.r) / 255.0,
+            green: CGFloat(color.g) / 255.0,
+            blue: CGFloat(color.b) / 255.0,
+            alpha: 1
+        ))
+    }
+
+    private func currentPickColor() -> (r: UInt8, g: UInt8, b: UInt8)? {
+        guard state == .editing || state == .selecting,
+              let selection,
+              selection.contains(mouseScreenLocal),
+              let captured else { return nil }
+        return captured.pixelColor(atScreenPoint: mouseScreenLocal)
+    }
+
+    /// Copies the color under the pointer as #RRGGBB. Plain C is consumed by
+    /// the screenshot session, so the keystroke cannot reach another app.
+    private func copyCurrentPickColor() {
+        guard tool != .text else { return }
+        guard let color = currentPickColor() else {
+            NSSound.beep()
+            return
+        }
+        let hex = ColorHex.string(r: color.r, g: color.g, b: color.b)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setString(hex, forType: .string) else {
+            NSSound.beep()
+            return
+        }
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        showPickColorToast(hex: hex)
+        statusBar?.showTransientTooltip("已复制取色值 \(hex)")
     }
 
     // MARK: - Save / pin
@@ -1338,6 +1400,14 @@ final class ScreenshotController {
     }
 
     private func showCopyToast() {
+        showSelectionToast("已复制到剪贴板")
+    }
+
+    private func showPickColorToast(hex: String) {
+        showSelectionToast("已复制取色值 \(hex)")
+    }
+
+    private func showSelectionToast(_ message: String) {
         guard let selection, let screen = activeScreen else { return }
         let rect = CGRect(
             x: screen.frame.minX + selection.rect.minX,
@@ -1345,7 +1415,7 @@ final class ScreenshotController {
             width: selection.rect.width,
             height: selection.rect.height
         )
-        ScreenshotToast.shared.show("已复制到剪贴板", near: rect, on: screen)
+        ScreenshotToast.shared.show(message, near: rect, on: screen)
     }
 
     private func saveSelection() {

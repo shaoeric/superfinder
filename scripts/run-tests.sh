@@ -24,6 +24,7 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
   Sources/Screenshot/Core/AnnotationRenderer.swift \
   Sources/Screenshot/Core/CaptureSelection.swift \
   Sources/Screenshot/Core/CapturedScreen.swift \
+  Sources/Screenshot/Core/ColorHex.swift \
   Sources/Screenshot/Core/MemoryBudget.swift \
   Sources/Screenshot/Core/PinEditingSession.swift \
   Sources/Screenshot/Core/PointerGeometry.swift \

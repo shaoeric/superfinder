@@ -153,6 +153,42 @@ do {
     check(!toast.isVisible, "copy toast is hidden until requested")
 }
 
+// MARK: - Selection HUD
+
+do {
+    let hud = CaptureHUD()
+    if let cg = hud.contentView?.layer?.backgroundColor,
+       let background = NSColor(cgColor: cg)?.usingColorSpace(.sRGB) {
+        checkEqual(
+            Int((background.redComponent * 255).rounded()),
+            235,
+            "selection HUD uses the light #EBEBEB background"
+        )
+    } else {
+        check(false, "selection HUD exposes a light background layer")
+    }
+
+    let swatch = hud.contentView?.allSubviewsRecursively.first {
+        $0.identifier?.rawValue == "hudColorSwatch"
+    }
+    check(swatch != nil, "selection HUD exposes a color chip")
+    hud.updateColor(NSColor(srgbRed: 1, green: 0.5, blue: 0, alpha: 1))
+    if let cg = swatch?.layer?.backgroundColor,
+       let color = NSColor(cgColor: cg)?.usingColorSpace(.sRGB) {
+        checkEqual(Int((color.redComponent * 255).rounded()), 255, "HUD chip shows the sampled red component")
+        checkEqual(Int((color.greenComponent * 255).rounded()), 128, "HUD chip shows the sampled green component")
+    } else {
+        check(false, "HUD color chip applies a sampled color")
+    }
+    hud.updateColor(nil)
+    if let cg = swatch?.layer?.backgroundColor, let color = NSColor(cgColor: cg) {
+        check(color.alphaComponent < 0.01, "HUD color chip clears when no pixel is selected")
+    } else {
+        check(false, "HUD color chip can be cleared")
+    }
+    hud.hide()
+}
+
 // MARK: - Pinned image window
 
 do {

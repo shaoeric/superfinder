@@ -376,6 +376,11 @@ do {
 }
 
 do {
+    checkEqual(ColorHex.string(r: 235, g: 235, b: 235), "#EBEBEB", "color picker copies uppercase six-digit hex")
+    checkEqual(ColorHex.string(r: 0, g: 15, b: 255), "#000FFF", "color picker pads short hex components")
+}
+
+do {
     var selection = CaptureSelection(anchor: CGPoint(x: 100, y: 100), current: CGPoint(x: 50, y: 80))
     checkEqual(selection.rect, CGRect(x: 50, y: 80, width: 50, height: 20), "selection normalized from any direction")
     check(selection.handle(at: CGPoint(x: 50, y: 80)) == .topLeft, "top-left handle hit")

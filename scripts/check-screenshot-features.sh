@@ -114,16 +114,37 @@ MOUSE_MOVED_BODY="$(awk '/private func mouseMoved/{flag=1} flag{print} flag&&/^ 
 if ! printf '%s\n' "$MOUSE_MOVED_BODY" | grep -q 'showCrosshair'; then
   fail "鼠标移动没有更新十字辅助线"
 fi
-if printf '%s\n' "$MOUSE_MOVED_BODY" | grep -q 'updateHUD'; then
+if printf '%s\n' "$MOUSE_MOVED_BODY" | grep -q 'updateHUD()'; then
   fail "鼠标移动仍在重绘 HUD"
 fi
 
-# HUD keeps only the selection size; no live coordinate/pixel readout.
+# HUD keeps only the size text plus an unlabeled color chip.
 if grep -Eq '坐标|RGB' "$HUD"; then
-  fail "HUD 仍在渲染鼠标坐标或像素颜色"
+  fail "HUD 仍在渲染鼠标坐标或颜色文本"
 fi
 if ! grep -q '尺寸' "$HUD"; then
   fail "HUD 未保留选区尺寸"
+fi
+if ! grep -q 'hudColorSwatch' "$HUD" || ! grep -q 'func updateColor' "$HUD"; then
+  fail "HUD 缺少鼠标颜色色块"
+fi
+if ! grep -q 'srgbRed: 235.0 / 255.0' "$HUD"; then
+  fail "HUD 背景不是 #EBEBEB"
+fi
+
+# Plain C copies the current pixel color outside text entry, using the shared
+# uppercase hex formatter, and reports the value.
+if ! grep -q 'case "c":' "$CONTROLLER" || ! grep -q 'copyCurrentPickColor' "$CONTROLLER"; then
+  fail "截图器缺少 C 键取色复制"
+fi
+if ! grep -q 'ColorHex.string' "$CONTROLLER"; then
+  fail "取色复制没有使用十六进制格式化"
+fi
+if ! grep -q '已复制取色值' "$CONTROLLER"; then
+  fail "取色复制缺少可见反馈"
+fi
+if ! grep -q 'tool != .text' "$CONTROLLER"; then
+  fail "C 键取色没有排除文本标注模式"
 fi
 
 # Color palette must be above the overlay/toolbar window level.
@@ -134,4 +155,4 @@ fi
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
-echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板、#EBEBEB 工具栏、框选十字线、HUD 仅显示尺寸。"
+echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板、#EBEBEB 工具栏、框选十字线、HUD 色块、C 键取色。"
