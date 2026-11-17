@@ -51,6 +51,7 @@ final class CaptureOverlayWindow: NSPanel {
     func reloadAnnotations() { overlayView.reloadAnnotations() }
     func showPreview(annotation: Annotation?) { overlayView.showPreview(annotation: annotation) }
     func showErasePreview(stroke: EraseStroke?) { overlayView.showErasePreview(stroke: stroke) }
+    func showCrosshair(at point: CGPoint?) { overlayView.showCrosshair(at: point) }
     func showBrushCursor(at point: CGPoint?, size: CGFloat, shape: EraserShape) {
         overlayView.showBrushCursor(at: point, size: size, shape: shape)
     }
@@ -68,6 +69,7 @@ final class CaptureOverlayView: NSView {
     private let annotationRoot = CALayer()
     private let chromeRoot = CALayer()
     private let previewRoot = CALayer()
+    private let crosshairLayer = CAShapeLayer()
     private var trackingAreaRef: NSTrackingArea?
 
     private(set) var capturedScreen: CapturedScreen?
@@ -129,12 +131,27 @@ final class CaptureOverlayView: NSView {
         chromeRoot.frame = bounds
         previewRoot.frame = bounds
 
+        // Full-screen guide lines drawn above every other overlay layer. They
+        // move only on mouse events; there is no timer or display link.
+        crosshairLayer.name = "crosshair"
+        crosshairLayer.frame = bounds
+        crosshairLayer.fillColor = NSColor.clear.cgColor
+        crosshairLayer.strokeColor = NSColor.white.withAlphaComponent(0.92).cgColor
+        crosshairLayer.lineWidth = 1
+        crosshairLayer.lineCap = .butt
+        crosshairLayer.shadowColor = NSColor.black.cgColor
+        crosshairLayer.shadowOpacity = 0.72
+        crosshairLayer.shadowRadius = 1
+        crosshairLayer.shadowOffset = .zero
+        crosshairLayer.isHidden = true
+
         root.addSublayer(baseLayer)
         root.addSublayer(dimLayer)
         root.addSublayer(frozenLayer)
         root.addSublayer(annotationRoot)
         root.addSublayer(chromeRoot)
         root.addSublayer(previewRoot)
+        root.addSublayer(crosshairLayer)
 
         updateSelectionLayers()
         updateFrozenLayer()
@@ -153,6 +170,7 @@ final class CaptureOverlayView: NSView {
         annotationRoot.frame = bounds
         chromeRoot.frame = bounds
         previewRoot.frame = bounds
+        crosshairLayer.frame = bounds
         updateSelectionLayers()
         updateFrozenLayer()
         CATransaction.commit()
@@ -200,6 +218,7 @@ final class CaptureOverlayView: NSView {
         chromeRoot.isHidden = !active
         previewRoot.isHidden = !active
         if !active {
+            crosshairLayer.isHidden = true
             dimMaskLayer.path = CGPath(rect: bounds, transform: nil)
         } else {
             updateSelectionLayers()
@@ -323,6 +342,29 @@ final class CaptureOverlayView: NSView {
             layer.fillColor = NSColor.white.withAlphaComponent(0.3).cgColor
         }
         previewRoot.addSublayer(layer)
+    }
+
+    /// Draws a horizontal and a vertical guide line through a screen-local
+    /// (top-left origin) point. The system crosshair cursor remains the exact
+    /// center, so the lines help align edges without hiding the pointer.
+    func showCrosshair(at point: CGPoint?) {
+        guard let point else {
+            crosshairLayer.isHidden = true
+            return
+        }
+        let x = min(max(point.x, 0.5), max(0.5, bounds.width - 0.5))
+        let y = min(max(bounds.height - point.y, 0.5), max(0.5, bounds.height - 0.5))
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 0, y: y))
+        path.addLine(to: CGPoint(x: bounds.width, y: y))
+        path.move(to: CGPoint(x: x, y: 0))
+        path.addLine(to: CGPoint(x: x, y: bounds.height))
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        crosshairLayer.frame = bounds
+        crosshairLayer.path = path
+        crosshairLayer.isHidden = false
+        CATransaction.commit()
     }
 
     func showBrushCursor(at point: CGPoint?, size: CGFloat, shape: EraserShape) {

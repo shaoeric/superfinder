@@ -49,14 +49,36 @@ func makeImage(width: Int, height: Int) -> CGImage {
 do {
     let toolbar = CaptureToolbar()
     toolbar.contentView?.layoutSubtreeIfNeeded()
+
+    // The toolbar is a fixed light surface (#EBEBEB) with dark chrome.
+    let expectedBackground = CaptureToolbar.backgroundColor.usingColorSpace(.sRGB)
+    if let expectedBackground {
+        checkEqual(Int((expectedBackground.redComponent * 255).rounded()), 235, "toolbar background is #EBEBEB (red)")
+        checkEqual(Int((expectedBackground.greenComponent * 255).rounded()), 235, "toolbar background is #EBEBEB (green)")
+        checkEqual(Int((expectedBackground.blueComponent * 255).rounded()), 235, "toolbar background is #EBEBEB (blue)")
+    } else {
+        check(false, "toolbar background color converts to sRGB")
+    }
+    if let cg = toolbar.contentView?.layer?.backgroundColor,
+       let applied = NSColor(cgColor: cg)?.usingColorSpace(.sRGB) {
+        checkEqual(Int((applied.redComponent * 255).rounded()), 235, "toolbar applies the light background")
+    } else {
+        check(false, "toolbar content view has a light background layer")
+    }
+
     let swatches = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? ColorSwatchButton } ?? []
     checkEqual(swatches.count, 3, "toolbar exposes one color swatch per drawing tool")
     check(swatches.allSatisfy { $0.frame.width > 0 && $0.frame.height > 0 }, "toolbar swatches are laid out")
     check(swatches.allSatisfy { $0.title.isEmpty && $0.attributedTitle.string.isEmpty }, "color swatches do not draw a default button title")
     let toolbarButtons = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? NSButton } ?? []
-    let iconButtons = toolbarButtons.filter { $0.image != nil }
+    let iconButtons = toolbarButtons.filter { $0.image != nil && !($0 is ColorSwatchButton) }
     check(iconButtons.count >= 11, "toolbar exposes all icon buttons")
     check(iconButtons.allSatisfy { $0.title.isEmpty }, "toolbar icon buttons do not draw default titles")
+    if let tint = iconButtons.first?.contentTintColor?.usingColorSpace(.sRGB) {
+        check(tint.brightnessComponent < 0.5, "toolbar icons are dark on the light background")
+    } else {
+        check(false, "toolbar icon buttons have a content tint")
+    }
     let fillControls = toolbar.contentView?.allSubviewsRecursively.compactMap { $0 as? NSSegmentedControl } ?? []
     if let fill = fillControls.first(where: { $0.segmentCount == 2 }) {
         check(fill.image(forSegment: 0) != nil, "mode switch has an outline rectangle icon")

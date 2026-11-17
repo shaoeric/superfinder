@@ -16,6 +16,7 @@ ANNOTATION="Sources/Screenshot/Core/Annotation.swift"
 PALETTE="Sources/Screenshot/UI/ColorPalettePanel.swift"
 TOOLBAR="Sources/Screenshot/UI/CaptureToolbar.swift"
 HUD="Sources/Screenshot/UI/CaptureHUD.swift"
+OVERLAY="Sources/Screenshot/UI/CaptureOverlayWindow.swift"
 
 # Text editing must only auto-commit on a new mouse-down, never on the
 # mouse-up of the click that opened the editor (which used to flash and close).
@@ -94,6 +95,37 @@ if ! grep -q 'acceptsFirstMouse' "$PIN"; then
   fail "贴图窗口首击不能直接拖拽"
 fi
 
+# Screenshot toolbar is a fixed light #EBEBEB surface with dark chrome.
+if ! grep -q 'srgbRed: 235.0 / 255.0' "$TOOLBAR"; then
+  fail "工具栏背景不是 #EBEBEB"
+fi
+if ! grep -q 'static let backgroundColor' "$TOOLBAR"; then
+  fail "工具栏缺少可复用的浅色背景定义"
+fi
+
+# Selection is aided by a full-screen crosshair, updated by mouse events only.
+if ! grep -q 'func showCrosshair' "$OVERLAY" || ! grep -q 'crosshairLayer' "$OVERLAY"; then
+  fail "框选阶段缺少十字辅助线"
+fi
+if ! grep -q 'showCrosshair' "$CONTROLLER"; then
+  fail "控制器没有更新十字辅助线"
+fi
+MOUSE_MOVED_BODY="$(awk '/private func mouseMoved/{flag=1} flag{print} flag&&/^    }$/{exit}' "$CONTROLLER")"
+if ! printf '%s\n' "$MOUSE_MOVED_BODY" | grep -q 'showCrosshair'; then
+  fail "鼠标移动没有更新十字辅助线"
+fi
+if printf '%s\n' "$MOUSE_MOVED_BODY" | grep -q 'updateHUD'; then
+  fail "鼠标移动仍在重绘 HUD"
+fi
+
+# HUD keeps only the selection size; no live coordinate/pixel readout.
+if grep -Eq '坐标|RGB' "$HUD"; then
+  fail "HUD 仍在渲染鼠标坐标或像素颜色"
+fi
+if ! grep -q '尺寸' "$HUD"; then
+  fail "HUD 未保留选区尺寸"
+fi
+
 # Color palette must be above the overlay/toolbar window level.
 if ! grep -q 'screenSaver.rawValue + 3' "$PALETTE"; then
   fail "取色板窗口层级不够高"
@@ -102,4 +134,4 @@ fi
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
-echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板。"
+echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板、#EBEBEB 工具栏、框选十字线、HUD 仅显示尺寸。"

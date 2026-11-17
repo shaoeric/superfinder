@@ -149,6 +149,7 @@ final class ScreenshotController {
         removeEventMonitor()
         textEditor?.end()
         textEditor = nil
+        activeOverlay?.showCrosshair(at: nil)
         hud?.hide()
         toolbar?.hideToolbar()
         ColorPalettePanel.shared.dismissAll()
@@ -231,6 +232,10 @@ final class ScreenshotController {
                 guard let self, let window else { return }
                 self.mouseEntered(over: window)
             }
+            window.overlayView.onMouseExited = { [weak self, weak window] in
+                guard let self, let window else { return }
+                self.mouseExited(over: window)
+            }
             window.orderFrontRegardless()
             return window
         }
@@ -258,6 +263,7 @@ final class ScreenshotController {
         activeOverlay?.makeKeyAndOrderFront(nil)
         refreshActiveOverlay()
         updateHUD()
+        updateCrosshairForCurrentPointer(on: screen)
     }
 
     private func switchActiveScreen(to window: CaptureOverlayWindow) {
@@ -273,6 +279,7 @@ final class ScreenshotController {
         window.overlayView.setActive(true)
         window.overlayView.setCapturedScreen(nil)
         window.makeKeyAndOrderFront(nil)
+        activeOverlay?.showCrosshair(at: nil)
         hud?.hide()
         toolbar?.hideToolbar()
 
@@ -302,15 +309,45 @@ final class ScreenshotController {
         window.makeKeyAndOrderFront(nil)
     }
 
+    private func mouseExited(over window: CaptureOverlayWindow) {
+        guard window === activeOverlay else { return }
+        window.showCrosshair(at: nil)
+    }
+
     private func mouseMoved(over window: CaptureOverlayWindow, viewPoint: CGPoint) {
         guard window === activeOverlay, let screen = activeScreen else { return }
         let local = CGPoint(x: viewPoint.x, y: screen.frame.height - viewPoint.y)
         mouseScreenLocal = local
-        if state == .selecting || state == .editing {
+        switch state {
+        case .selecting:
+            // The guide follows the pointer; the HUD is intentionally not
+            // touched here, so moving the mouse does not relayout live text.
+            window.showCrosshair(at: local)
+        case .editing:
+            window.showCrosshair(at: nil)
             updateHover(at: local)
-            updateHUD()
             updateBrushCursor(at: local)
+        case .idle, .capturing, .saving:
+            window.showCrosshair(at: nil)
         }
+    }
+
+    /// Positions the selection guide immediately when an overlay becomes
+    /// active, without waiting for the first mouse-move event.
+    private func updateCrosshairForCurrentPointer(on screen: NSScreen) {
+        guard state == .selecting, let overlay = activeOverlay else {
+            activeOverlay?.showCrosshair(at: nil)
+            return
+        }
+        let global = NSEvent.mouseLocation
+        guard screen.frame.contains(global) else {
+            overlay.showCrosshair(at: nil)
+            return
+        }
+        overlay.showCrosshair(at: CGPoint(
+            x: global.x - screen.frame.minX,
+            y: screen.frame.maxY - global.y
+        ))
     }
 
     // MARK: - Event monitor
@@ -664,6 +701,7 @@ final class ScreenshotController {
             self.selection = selection
             createDocumentIfNeeded(selection: selection)
             state = .editing
+            activeOverlay?.showCrosshair(at: nil)
             tool = .pointer
             activeOverlay?.setSession(document: document, selection: selection, tool: tool)
             activeOverlay?.updateSelectionState(selectedID: nil, hoveredID: nil, editingTextID: nil)
@@ -1261,7 +1299,7 @@ final class ScreenshotController {
             hud?.hide()
             return
         }
-        hud?.update(screen: screen, selection: selection, captured: captured, mouse: mouseScreenLocal)
+        hud?.update(screen: screen, selection: selection, captured: captured)
     }
 
     // MARK: - Save / pin

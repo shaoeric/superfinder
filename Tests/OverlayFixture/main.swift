@@ -43,6 +43,33 @@ view.setCapturedScreen(captured)
 view.setSession(document: document, selection: selection, tool: .pointer)
 view.layoutSubtreeIfNeeded()
 
+// The selection guide must span the whole screen and be controllable purely
+// from mouse events (no timer).
+guard let crosshair = view.layer?.sublayers?.first(where: { $0.name == "crosshair" }) as? CAShapeLayer else {
+    print("FAIL: crosshair layer is missing")
+    exit(3)
+}
+if !crosshair.isHidden {
+    print("FAIL: crosshair starts hidden until the pointer moves")
+    exit(3)
+}
+view.showCrosshair(at: CGPoint(x: 360, y: 230))
+if crosshair.isHidden {
+    print("FAIL: crosshair does not show for a selection point")
+    exit(3)
+}
+let crosshairBounds = crosshair.path?.boundingBox ?? .zero
+if crosshairBounds.width < pointSize.width - 1 || crosshairBounds.height < pointSize.height - 1 {
+    print("FAIL: crosshair does not span the screen: \(crosshairBounds)")
+    exit(3)
+}
+view.showCrosshair(at: nil)
+if !crosshair.isHidden {
+    print("FAIL: crosshair does not hide when the pointer leaves")
+    exit(3)
+}
+print("PASS: crosshair guide spans the screen and follows mouse events")
+
 let scale: CGFloat = 2
 let outW = Int(pointSize.width * scale), outH = Int(pointSize.height * scale)
 let bmp = CGContext(data: nil, width: outW, height: outH, bitsPerComponent: 8, bytesPerRow: 0,

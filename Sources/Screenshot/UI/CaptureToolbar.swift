@@ -1,6 +1,19 @@
 import AppKit
 
 final class CaptureToolbar: NSPanel {
+    /// The toolbar is always light: a fixed #EBEBEB surface with dark icons
+    /// and labels. It deliberately does not follow the system dark appearance,
+    /// so the controls stay legible against the light surface.
+    static let backgroundColor = NSColor(
+        srgbRed: 235.0 / 255.0,
+        green: 235.0 / 255.0,
+        blue: 235.0 / 255.0,
+        alpha: 1
+    )
+    private static let foregroundColor = NSColor(white: 0.16, alpha: 1)
+    private static let labelColor = NSColor(white: 0.14, alpha: 0.72)
+    private static let separatorColor = NSColor.black.withAlphaComponent(0.12)
+
     var onToolSelected: ((CaptureTool) -> Void)?
     var onUndo: (() -> Void)?
     var onRedo: (() -> Void)?
@@ -45,7 +58,7 @@ final class CaptureToolbar: NSPanel {
         )
         control.segmentStyle = .rounded
         control.controlSize = .small
-        control.appearance = NSAppearance(named: .darkAqua)
+        control.appearance = NSAppearance(named: .aqua)
         control.setToolTip("非填充", forSegment: 0)
         control.setToolTip("填充", forSegment: 1)
         control.setWidth(28, forSegment: 0)
@@ -82,6 +95,7 @@ final class CaptureToolbar: NSPanel {
         )
         level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        appearance = NSAppearance(named: .aqua)
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
@@ -110,7 +124,7 @@ final class CaptureToolbar: NSPanel {
             button.layer?.backgroundColor = selected
                 ? NSColor.controlAccentColor.withAlphaComponent(0.85).cgColor
                 : NSColor.clear.cgColor
-            button.contentTintColor = selected ? .white : NSColor.white.withAlphaComponent(0.9)
+            button.contentTintColor = selected ? .white : Self.foregroundColor
         }
 
         undoButton.isEnabled = document?.canUndo == true
@@ -206,9 +220,9 @@ final class CaptureToolbar: NSPanel {
     private func buildUI() {
         let container = NSView()
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.82).cgColor
+        container.layer?.backgroundColor = Self.backgroundColor.cgColor
         container.layer?.cornerRadius = 10
-        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        container.layer?.borderColor = NSColor.black.withAlphaComponent(0.10).cgColor
         container.layer?.borderWidth = 1
 
         for stack in [propertyContainer, mainRow] {
@@ -385,7 +399,7 @@ final class CaptureToolbar: NSPanel {
         button.isBordered = false
         button.image = image
         button.imagePosition = .imageOnly
-        button.contentTintColor = NSColor.white.withAlphaComponent(0.9)
+        button.contentTintColor = Self.foregroundColor
         button.toolTip = tooltip
         button.setAccessibilityLabel(tooltip)
         button.wantsLayer = true
@@ -399,13 +413,13 @@ final class CaptureToolbar: NSPanel {
     private func label(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 11)
-        label.textColor = NSColor.white.withAlphaComponent(0.75)
+        label.textColor = Self.labelColor
         return label
     }
 
     private func styleValueLabel(_ label: NSTextField) {
         label.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-        label.textColor = NSColor.white
+        label.textColor = Self.foregroundColor
         label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         label.widthAnchor.constraint(equalToConstant: 22).isActive = true
@@ -424,6 +438,7 @@ final class CaptureToolbar: NSPanel {
 
     private func configureSwatch(_ button: ColorSwatchButton, action: @escaping () -> Void) {
         button.onClick = action
+        button.layer?.borderColor = NSColor.black.withAlphaComponent(0.24).cgColor
         button.translatesAutoresizingMaskIntoConstraints = false
         button.widthAnchor.constraint(equalToConstant: 34).isActive = true
         button.heightAnchor.constraint(equalToConstant: 22).isActive = true
@@ -444,7 +459,7 @@ final class CaptureToolbar: NSPanel {
     private func separator() -> NSView {
         let view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        view.layer?.backgroundColor = Self.separatorColor.cgColor
         view.translatesAutoresizingMaskIntoConstraints = false
         view.widthAnchor.constraint(equalToConstant: 1).isActive = true
         view.heightAnchor.constraint(equalToConstant: 18).isActive = true

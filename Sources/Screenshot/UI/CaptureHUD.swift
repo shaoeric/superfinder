@@ -80,32 +80,21 @@ final class CaptureHUD: NSPanel {
     func update(
         screen: NSScreen,
         selection: CaptureSelection,
-        captured: CapturedScreen?,
-        mouse: CGPoint
+        captured: CapturedScreen?
     ) {
         let local = selection.rect
         let scale = captured?.workingScale ?? 1
         let pixelWidth = Int((local.width * scale).rounded())
         let pixelHeight = Int((local.height * scale).rounded())
 
-        let mainFrame = NSScreen.screens.first?.frame ?? screen.frame
-        let globalX = Int((screen.frame.minX + local.minX - mainFrame.minX).rounded())
-        let globalY = Int((mainFrame.maxY - screen.frame.maxY + local.minY).rounded())
-
-        var rgbText = "RGB --"
-        if let captured,
-           let color = captured.pixelColor(atScreenPoint: mouse) {
-            rgbText = String(
-                format: "RGB(%3d,%3d,%3d) #%02X%02X%02X",
-                color.r, color.g, color.b, color.r, color.g, color.b
-            )
-        }
-
-        label.stringValue = "尺寸 \(pixelWidth) × \(pixelHeight) px   坐标 X:\(globalX) Y:\(globalY)   \(rgbText)"
+        // Only the selection size remains. The old live coordinate and pixel
+        // color readout forced a text layout on every mouse move; the
+        // crosshair overlay now supplies the positional feedback instead.
+        label.stringValue = "尺寸 \(pixelWidth) × \(pixelHeight) px"
         contentView?.layoutSubtreeIfNeeded()
         let attributes = [NSAttributedString.Key.font: label.font ?? NSFont.systemFont(ofSize: 11)]
         let fitting = ceil((label.stringValue as NSString).size(withAttributes: attributes).width) + 22
-        let width = min(max(280, fitting), 760)
+        let width = min(max(160, fitting), 760)
         setContentSize(CGSize(width: width, height: 30))
 
         let screenTop = screen.frame.maxY
