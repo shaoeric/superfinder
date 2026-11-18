@@ -1386,6 +1386,9 @@ final class ScreenshotController {
 
     private func copySelectionToPasteboard() {
         guard state == .editing, let document, let captured else { return }
+        let isPinEditing = editingPin != nil
+        let toastScreen = activeScreen
+        let toastSelection = selection?.rect
         document.rebuildFrozen()
         guard let image = ScreenshotComposer.composeSelection(
             document: document,
@@ -1395,7 +1398,23 @@ final class ScreenshotController {
         }
         guard ScreenshotPasteboard.copy(image: image) else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-        showCopyToast()
+
+        if isPinEditing {
+            // Copying while editing a pin must not close the pin's editor.
+            showCopyToast()
+        } else {
+            // In a normal screenshot session, Cmd+C copies and then exits
+            // exactly like Esc; keep the toast context across cleanup so the
+            // confirmation remains visible over the restored app.
+            cleanup(restoreApp: true)
+            if let toastScreen, let toastSelection {
+                showSelectionToast(
+                    "已复制到剪贴板",
+                    selectionRect: toastSelection,
+                    on: toastScreen
+                )
+            }
+        }
         statusBar?.showTransientTooltip("已复制到剪贴板")
     }
 
@@ -1403,19 +1422,23 @@ final class ScreenshotController {
         showSelectionToast("已复制到剪贴板")
     }
 
-    private func showPickColorToast(hex: String) {
-        showSelectionToast("已复制取色值 \(hex)")
-    }
-
     private func showSelectionToast(_ message: String) {
         guard let selection, let screen = activeScreen else { return }
+        showSelectionToast(message, selectionRect: selection.rect, on: screen)
+    }
+
+    private func showSelectionToast(_ message: String, selectionRect: CGRect, on screen: NSScreen) {
         let rect = CGRect(
-            x: screen.frame.minX + selection.rect.minX,
-            y: screen.frame.maxY - selection.rect.maxY,
-            width: selection.rect.width,
-            height: selection.rect.height
+            x: screen.frame.minX + selectionRect.minX,
+            y: screen.frame.maxY - selectionRect.maxY,
+            width: selectionRect.width,
+            height: selectionRect.height
         )
         ScreenshotToast.shared.show(message, near: rect, on: screen)
+    }
+
+    private func showPickColorToast(hex: String) {
+        showSelectionToast("已复制取色值 \(hex)")
     }
 
     private func saveSelection() {

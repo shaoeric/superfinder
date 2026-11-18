@@ -37,6 +37,16 @@ if ! grep -q 'doc.on.doc' "$TOOLBAR"; then
   fail "工具栏缺少复制图片按钮"
 fi
 
+# Copying a normal screenshot exits the session like Esc, while copying from
+# a live pin editor must keep that editor open.
+COPY_BODY="$(awk '/private func copySelectionToPasteboard/{flag=1} flag{print} flag&&/^    }$/{exit}' "$CONTROLLER")"
+if ! printf '%s\n' "$COPY_BODY" | grep -q 'editingPin != nil'; then
+  fail "⌘C 没有区分截图模式与贴图编辑模式"
+fi
+if ! printf '%s\n' "$COPY_BODY" | grep -q 'cleanup(restoreApp: true)'; then
+  fail "截图模式 ⌘C 复制后没有退出截屏"
+fi
+
 # Pinned image context menu and Cmd+C path.
 if ! grep -q '显示工具条' "$PIN"; then
   fail "贴图右键菜单缺少「显示工具条」"
@@ -155,4 +165,4 @@ fi
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
-echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板、#EBEBEB 工具栏、框选十字线、HUD 色块、C 键取色。"
+echo "截屏功能检查通过：文本编辑/T图标、左上角旋转柄、填充切换、颜色继承、⌘C提示、贴图合成/首击拖拽/Esc释放、取色板、#EBEBEB 工具栏、框选十字线、HUD 色块、C 键取色、⌘C 复制后退出（贴图编辑例外）。"
