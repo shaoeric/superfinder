@@ -37,7 +37,7 @@ echo "==> 6/8 重启 Finder"
 sleep 1
 
 echo "==> 7/8 重置 TCC 记录（如存在）"
-for service in SystemPolicyDesktopFolder SystemPolicyDocumentsFolder SystemPolicyDownloadsFolder SystemPolicyAllFiles ScreenCapture; do
+for service in SystemPolicyDesktopFolder SystemPolicyDocumentsFolder SystemPolicyDownloadsFolder SystemPolicyAllFiles ScreenCapture Accessibility; do
   /usr/bin/tccutil reset "$service" com.shaobt.superfinder 2>/dev/null || true
   /usr/bin/tccutil reset "$service" com.shaobt.superfinder.FinderSync 2>/dev/null || true
 done

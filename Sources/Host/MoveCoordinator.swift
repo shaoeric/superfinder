@@ -63,6 +63,87 @@ final class MoveCoordinator {
     // MARK: - Hidden files
 
     private func handleToggleHiddenFiles() {
+        guard FinderHiddenFilesToggler.hasAccessibilityPermission else {
+            presentAccessibilityPrompt()
+            return
+        }
+
+        FinderHiddenFilesToggler.toggle { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let visible):
+                self.log.info("Finder hidden files visible=\(visible, privacy: .public) (direct)")
+                self.finishHiddenFiles(visible: visible)
+            case .failure(let error):
+                self.presentDirectToggleFailure(error)
+            }
+        }
+    }
+
+    private func presentAccessibilityPrompt() {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "不重启 Finder 切换隐藏文件"
+        alert.informativeText = """
+        macOS 没有公开的隐藏文件切换接口。SuperFinder 可以向 Finder 发送原生的 ⌘⇧. 快捷键，但需要一次「辅助功能」权限。
+
+        授权一次后会一直有效，Finder 窗口和标签页都不会关闭。也可以在「系统设置 → 隐私与安全性 → 辅助功能」中手动开启 SuperFinder。
+        """
+        alert.addButton(withTitle: "打开辅助功能设置")
+        alert.addButton(withTitle: "仍然重启 Finder")
+        alert.addButton(withTitle: "取消")
+
+        activateForUI()
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            FinderHiddenFilesToggler.requestAccessibilityPermission()
+        }
+        deactivateAfterUI()
+
+        switch response {
+        case .alertFirstButtonReturn:
+            finishHiddenFiles(visible: nil)
+        case .alertSecondButtonReturn:
+            restartFinderForHiddenFiles()
+        default:
+            finishHiddenFiles(visible: nil)
+        }
+    }
+
+    private func presentDirectToggleFailure(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "无法直接切换隐藏文件"
+        alert.informativeText = """
+        \(error.localizedDescription)
+
+        如果刚在「系统设置 → 隐私与安全性 → 辅助功能」中开启 SuperFinder，请回到 Finder 窗口再右键切换一次。也可以选择「仍然重启 Finder」作为回退。
+        """
+        alert.addButton(withTitle: "打开辅助功能设置")
+        alert.addButton(withTitle: "仍然重启 Finder")
+        alert.addButton(withTitle: "取消")
+
+        activateForUI()
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            FinderHiddenFilesToggler.requestAccessibilityPermission()
+        }
+        deactivateAfterUI()
+
+        switch response {
+        case .alertFirstButtonReturn:
+            finishHiddenFiles(visible: nil)
+        case .alertSecondButtonReturn:
+            restartFinderForHiddenFiles()
+        default:
+            finishHiddenFiles(visible: nil)
+        }
+    }
+
+    /// Explicit fallback only. The normal path above sends Finder its native
+    /// shortcut and leaves every Finder window open.
+    private func restartFinderForHiddenFiles() {
+        FinderHiddenFiles.refreshPreferenceCache()
         let visible = !FinderHiddenFiles.isVisible()
 
         do {
@@ -85,8 +166,6 @@ final class MoveCoordinator {
             return
         }
 
-        log.info("Finder hidden files visible=\(visible, privacy: .public)")
-
         do {
             _ = try ProcessRunner.runCheckingStatus("/usr/bin/killall", ["Finder"])
         } catch {
@@ -98,6 +177,7 @@ final class MoveCoordinator {
             return
         }
 
+        log.info("Finder hidden files visible=\(visible, privacy: .public) (restart fallback)")
         finishHiddenFiles(visible: visible)
     }
 

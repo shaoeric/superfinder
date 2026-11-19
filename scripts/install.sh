@@ -105,6 +105,12 @@ else
 fi
 
 echo "共享目录：$SHARED_SUPPORT"
+SIGN_REQ="$(/usr/bin/codesign -d -r- "$APP_DST" 2>&1 | tail -1)"
+if printf '%s\n' "$SIGN_REQ" | grep -q 'cdhash'; then
+  echo "签名：ad-hoc（重建后需要重新授权）"
+else
+  echo "签名：稳定本地证书（重建后保留授权）"
+fi
 echo "提示：首次移动桌面/文稿/下载中的文件时，macOS 会请求文件夹访问权限。"
-echo "提示：首次截屏（⌃Q）需要允许「屏幕录制」权限，授权后如仍不可用请重新打开应用。"
+echo "提示：首次截屏（⌃Q）需要允许「屏幕录制」权限，授权一次后长期有效。"
 echo "=========================================="

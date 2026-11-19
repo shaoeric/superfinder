@@ -9,7 +9,7 @@
 - 后台自动启动（LaunchAgent），无悬浮球、无 Dock 图标
 - 单例运行：重复启动会唤起已运行的实例并打开设置，不会产生第二个进程
 
-当前版本：1.3.0（本地 ad-hoc 签名，非 App Store、非公证）。
+当前版本：1.4.1（本地自签名证书，非 App Store、非公证）。
 
 ## 功能
 
@@ -21,7 +21,7 @@
 | 移动 N 项到此文件夹 | 仅当只选中一个项目时出现；把之前剪切的项目移动到这个项目（主程序会校验它必须是文件夹） |
 | 移动到文件夹… | 弹出目录选择面板，移动当前选中的项目 |
 | 复制绝对路径 | 复制选中项目的绝对路径；多选时每行一个 |
-| 显示隐藏文件 / 不显示隐藏文件 | 按 Finder 当前状态显示对应标题；切换隐藏文件和隐藏目录的全局显示，菜单标题会随 `⌘⇧.` 等外部切换同步。切换后 Finder 会自动重启 |
+| 显示隐藏文件 / 不显示隐藏文件 | 按 SuperFinder 记录的当前状态显示对应标题；切换隐藏文件和隐藏目录的全局显示。直接调用 Finder 原生快捷键，不重启 Finder、不关闭窗口；首次使用需要一次「辅助功能」权限 |
 | 在终端中打开 | 仅当只选中一个项目时出现；选中的是文件夹就打开它，是文件则打开它所在目录 |
 
 ### 窗口空白处右键
@@ -32,7 +32,7 @@
 | 取消待移动（N 项） | 清空剪切缓冲区 |
 | 复制当前目录路径 | 复制当前 Finder 目录的绝对路径 |
 | 在终端中打开当前目录 | 在系统 Terminal.app 中打开当前 Finder 目录 |
-| 显示隐藏文件 / 不显示隐藏文件 | 与文件右键中的同名菜单一致；切换后 Finder 自动重启 |
+| 显示隐藏文件 / 不显示隐藏文件 | 与文件右键中的同名菜单一致；不重启 Finder，首次使用需要一次「辅助功能」权限 |
 | SuperFinder 设置… | 打开设置窗口（菜单栏图标被刘海挡住时也可用这个入口） |
 
 ### 移动规则
@@ -148,20 +148,35 @@
 - 截屏功能要求 macOS 14+（ScreenCaptureKit `SCScreenshotManager`）
 - 无需 Xcode；使用 Command Line Tools 的 `swiftc` 构建
 - 截屏需要「屏幕录制」权限
+- 直接切换隐藏文件需要一次「辅助功能」权限
 
 ## 构建
 
+首次构建先生成一次本地稳定签名身份：
+
 ```bash
 cd superfinder
+./scripts/setup-signing.sh
 ./scripts/build.sh
 ```
+
+`setup-signing.sh` 会创建一个只用于 SuperFinder 的本地自签名证书和独立钥匙串
+（`~/Library/Keychains/SuperFinder.keychain-db`），并把该证书标记为代码签名信任。
+之后每次构建都复用同一身份，不需要重新创建。
 
 产物：`build/SuperFinder.app`。构建会自动：
 
 1. 用 `swiftc` 编译主程序和 Finder Sync 扩展
 2. 组装 `.app` / `.appex` 包
-3. 用 `pluginkit` 可识别的 ad-hoc 签名给扩展和主程序签名
+3. 用稳定的本地证书签名扩展和主程序
 4. `codesign --verify --deep --strict` 校验
+
+> 为什么不再用 ad-hoc：ad-hoc 签名的 designated requirement 是每次构建都会变化的
+> `cdhash`，macOS 会把它当成新应用，所以「屏幕录制」和「辅助功能」授权每次重建后都失效。
+> 稳定的本地证书让 designated requirement 固定为证书根哈希，TCC 授权可以跨构建保留。
+
+> 在 DSH 等沙箱环境中构建时，需要 danger-full-access 权限：签名过程要访问
+> `~/Library/Keychains` 并临时写入钥匙串搜索列表。
 
 ## 安装 / 启用
 
@@ -178,6 +193,8 @@ cd superfinder
 - 重启 Finder，让扩展菜单立刻生效
 
 > 在 DSH 等沙箱环境中运行安装脚本时，需要 danger-full-access 权限（写入 `/Applications`、调用 `pluginkit`/`launchctl`、重启 Finder）。
+
+> 从旧版 ad-hoc 签名升级到 1.4.x 的稳定证书时，如果 macOS 再次询问屏幕录制权限，允许一次即可；之后重新构建/安装都会沿用同一 designated requirement。本次升级后系统已把现有屏幕录制授权关联到新的稳定证书。
 
 若想手动启用 Finder 扩展：
 
@@ -199,8 +216,16 @@ macOS 15 及以上已把 Finder 扩展从旧版「扩展」面板移走；可在
 3. 在目标文件夹空白处右键 →「移动 N 项到这里」；或右键目标文件夹 →「移动 N 项到此文件夹」。
 4. 也可以对当前选择使用「移动到文件夹…」。
 5. 右键单个文件夹/文件 →「在终端中打开」；或在目录空白处右键 →「在终端中打开当前目录」。
-6. 在任意 Finder 右键菜单中选择「显示隐藏文件」；隐藏文件和隐藏目录出现后，再次右键会显示「不显示隐藏文件」。切换后 Finder 会自动重启，菜单标题与 Finder 的 `⌘⇧.` 状态保持一致。
+6. 在任意 Finder 右键菜单中选择「显示隐藏文件」；隐藏文件和隐藏目录出现后，再次右键会显示「不显示隐藏文件」。切换通过 Finder 原生的 `⌘⇧.` 完成，Finder 窗口和标签页保持不动，Finder 进程也不会重启。首次使用会请求一次「辅助功能」权限；如果暂不授权，可以在提示里选择「仍然重启 Finder」作为回退。
 7. 点击菜单栏图标 →「设置…」可管理登录启动、扩展状态和 Finder 重启。
+
+#### 隐藏文件切换权限
+
+- 第一次点击「显示隐藏文件」时，系统会请求一次「辅助功能」权限；允许后再次右键即可直接切换，Finder 窗口不会关闭。
+- 如果已经允许但仍反复提示，先退出 SuperFinder，再重新打开一次（`⌘Q` 或菜单栏 →「退出 SuperFinder」）。
+- 如果不想授予辅助功能权限，可以在提示里选择「仍然重启 Finder」；这是唯一需要重启 Finder 的回退路径。
+- 切换后 SuperFinder 会记录当前状态，用于下一次右键菜单的标题和下次启动 Finder 的默认值。Finder 自身的 `⌘⇧.` 只改变当前会话、不会立刻更新该偏好，所以手动用 `⌘⇧.` 切换后，菜单标题可能滞后一次；再点一次菜单会切换并纠正记录。
+- 切换要求 Finder 在前台（正常从右键菜单操作时始终满足）；如果点完菜单后立刻切换到别的应用，本次不会发送快捷键，也不会改记录。
 
 ### 截屏
 
@@ -217,7 +242,7 @@ macOS 15 及以上已把 Finder 扩展从旧版「扩展」面板移走；可在
 1. 第一次截屏时，macOS 会请求「屏幕录制」权限。
 2. 打开「系统设置 → 隐私与安全性 → 屏幕录制」，允许 SuperFinder。
 3. 如果授权后仍然无法截图，退出并重新打开 SuperFinder；部分 macOS 版本需要重启应用才生效。
-4. ad-hoc 签名每次重新构建后签名会变化，macOS 可能重新要求授权，这是本地工具的正常行为。
+4. 从 1.4.1 起使用稳定的本地签名证书，重新构建/重新安装不会改变 designated requirement，屏幕录制授权只需一次。只有删除 `~/Library/Keychains/SuperFinder.keychain-db` 或更换签名证书时才需要重新授权。
 
 也可以从设置窗口点击「打开屏幕录制设置」。
 
@@ -241,6 +266,7 @@ MacBook 刘海屏的菜单栏空间有限，当图标多到放不下时，macOS 
 - 首次移动**桌面、文稿、下载**等受保护目录中的文件时，macOS 会弹出「SuperFinder 想要访问…」，请选择**允许**。
 - 如果希望完全免提示，可以在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」里手动加入 `SuperFinder.app`（可选）。
 - 截屏需要「屏幕录制」权限；不截屏时不会采集屏幕。
+- 直接显示/不显示隐藏文件需要一次性「辅助功能」权限：SuperFinder 会向 Finder 发送原生 `⌘⇧.`，从而不重启 Finder。授权一次后在稳定签名下长期有效。
 - 复制绝对路径、剪切操作本身不需要文件访问权限。
 
 ## 目录与数据
@@ -248,6 +274,7 @@ MacBook 刘海屏的菜单栏空间有限，当图标多到放不下时，macOS 
 | 内容 | 位置 |
 |---|---|
 | 应用 | `/Applications/SuperFinder.app` |
+| 稳定签名钥匙串 | `~/Library/Keychains/SuperFinder.keychain-db`，密码文件 `~/Library/Keychains/SuperFinder.keychain-password` |
 | Finder 扩展 | `/Applications/SuperFinder.app/Contents/PlugIns/SuperFinderExtension.appex` |
 | 登录项 | `~/Library/LaunchAgents/com.shaobt.superfinder.plist` |
 | 扩展沙盒容器 | `~/Library/Containers/com.shaobt.superfinder.FinderSync` |
@@ -328,20 +355,24 @@ log show --last 5m --predicate 'subsystem == "com.shaobt.superfinder.FinderSync"
 ./scripts/uninstall.sh
 ```
 
-脚本会移除应用、登录项、Finder 扩展注册、扩展容器、偏好和 TCC 记录（含屏幕录制），并重启 Finder。
+脚本会移除应用、登录项、Finder 扩展注册、扩展容器、偏好和 TCC 记录（含屏幕录制、辅助功能），并重启 Finder。
 如果扩展容器被系统保护无法删除，请给终端/DSH 完全磁盘访问权限后重跑。
+
+稳定签名钥匙串 `~/Library/Keychains/SuperFinder.keychain-db` 和密码文件
+`~/Library/Keychains/SuperFinder.keychain-password` 默认保留，方便以后重装继续使用同一签名。
+如需彻底清理，可在确认不再重装后手动删除这两个文件；删除后下次构建需要重新创建身份并重新授权。
 
 ## 已知限制
 
 - 截屏一次只处理**一个显示器**，不支持跨屏单张选区；鼠标在开始选区前移动到另一屏会切换活动屏。
 - 截图按显示器原生 backing scale 采集；超大屏/多窗口贴图会按真实像素占用内存。
 - 截屏要求 macOS 14+；Finder 功能仍兼容 macOS 13。
-- 屏幕录制权限无法脚本自动授予；ad-hoc 重新签名后可能需重新授权。
+- 屏幕录制权限和辅助功能权限无法脚本自动授予；首次使用需在系统设置中允许。授权绑定稳定的本地签名身份，正常重建不会重置。
 - 快捷键固定 `⌃Q`，暂不提供自定义。
 - 贴图只存在内存中，退出应用后消失；不会为了内存预算压缩或降采样贴图。
 - 不支持滚动截屏、窗口自动识别、OCR、云端上传、自动保存历史。
 - Finder Sync 的监视范围不跨越文件系统边界；外接磁盘/挂载 DMG 中可能没有右键菜单（框架限制）。
-- 显示/不显示隐藏文件是 Finder 的全局设置，不是按目录生效；切换时需要重启 Finder，打开中的 Finder 窗口可能短暂关闭后重新打开。
+- 显示/不显示隐藏文件是 Finder 的全局设置，不是按目录生效。默认通过 Finder 原生 `⌘⇧.` 直接切换，不重启 Finder；首次需要一次性「辅助功能」权限。若拒绝授权，可选择显式回退到「重启 Finder」。
 - 移动不可通过 Finder 撤销；同名“替换”会把旧项目移入废纸篓，而不是直接删除。
 - 菜单栏图标位置由 macOS 决定，可能被刘海遮挡（见上方说明）。
 - 仅对当前用户安装/启用；不处理多用户、MDM 或 App Store 分发。
@@ -354,8 +385,9 @@ log show --last 5m --predicate 'subsystem == "com.shaobt.superfinder.FinderSync"
 - Finder 扩展：`Sources/Extension/`，`FIFinderSync` 子类，App Sandbox。
 - 共享代码：`Sources/Shared/`，命令模型、移动引擎、菜单模型等。
 - 资源：`Resources/Info-Host.plist`、`Resources/Info-Extension.plist`、`Resources/Extension.entitlements`。
-- 构建脚本：`scripts/build.sh`。
+- 构建脚本：`scripts/build.sh`；稳定签名：`scripts/setup-signing.sh`、`scripts/signing-config.sh`。
+- Finder 隐藏文件切换：`Sources/Host/FinderHiddenFilesToggler.swift`（辅助功能 + Finder 原生快捷键）。
 - 安装/卸载：`scripts/install.sh`、`scripts/uninstall.sh`。
 - 低功耗检查：`scripts/check-low-power.sh`；资源采样：`scripts/measure-resources.sh`。
 
-重新构建后建议重新执行 `install.sh`，因为扩展需要重新签名、注册并重启 Finder。
+重新构建后建议重新执行 `install.sh`，因为扩展需要重新注册并重启 Finder；稳定签名会沿用同一 designated requirement，不需要重新授权。

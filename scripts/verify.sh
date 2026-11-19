@@ -21,7 +21,26 @@ else
   fail "代码签名校验失败"
 fi
 
-if [[ -d "$APPEX" ]]; then ok "Finder 扩展存在"; else fail "Finder 扩展不存在"; fi
+if [[ -d "$APP" ]]; then
+  MAIN_REQ="$(/usr/bin/codesign -d -r- "$APP" 2>&1 | tail -1)"
+  if printf '%s\n' "$MAIN_REQ" | grep -q 'cdhash'; then
+    fail "仍是 ad-hoc 签名；重新构建会导致屏幕录制/辅助功能授权失效"
+  else
+    ok "主程序使用稳定签名（非 cdhash）"
+  fi
+fi
+
+if [[ -d "$APPEX" ]]; then
+  ok "Finder 扩展存在"
+  EXT_REQ="$(/usr/bin/codesign -d -r- "$APPEX" 2>&1 | tail -1)"
+  if printf '%s\n' "$EXT_REQ" | grep -q 'cdhash'; then
+    fail "Finder 扩展仍是 ad-hoc 签名"
+  else
+    ok "Finder 扩展使用稳定签名"
+  fi
+else
+  fail "Finder 扩展不存在"
+fi
 if /usr/bin/plutil -lint "$APP/Contents/Info.plist" "$APPEX/Contents/Info.plist" >/dev/null 2>&1; then
   ok "Info.plist 格式正确"
 else
