@@ -197,8 +197,8 @@ final class CommandWatcher {
                 continue
             }
 
-            guard !command.sources.isEmpty, !command.isExpired else {
-                log.info("Dropping empty or expired command: \(fileURL.lastPathComponent, privacy: .public)")
+            guard command.hasMinimumPayload, !command.isExpired else {
+                log.info("Dropping command without required payload or expired: \(fileURL.lastPathComponent, privacy: .public)")
                 CommandStore.remove(fileURL)
                 continue
             }

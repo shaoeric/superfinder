@@ -8,6 +8,7 @@ struct MoveCommand: Codable, Equatable {
         case moveHere
         case moveToFolder
         case openTerminal
+        case toggleHiddenFiles
     }
 
     static let currentSchema = 1
@@ -30,6 +31,18 @@ struct MoveCommand: Codable, Equatable {
 
     var isExpired: Bool {
         Date().timeIntervalSince(createdAt) > AppConfig.maxCommandAge
+    }
+
+    /// Commands that act on a selection need at least one source path. The
+    /// global hidden-files toggle has no selection, so it is valid with an
+    /// empty array.
+    var hasMinimumPayload: Bool {
+        switch action {
+        case .toggleHiddenFiles:
+            return true
+        case .moveHere, .moveToFolder, .openTerminal:
+            return !sources.isEmpty
+        }
     }
 
     var fileName: String {

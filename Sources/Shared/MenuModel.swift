@@ -8,6 +8,7 @@ enum FinderMenuAction: String {
     case copyTargetedPath
     case openTerminalForSelection
     case openTerminalHere
+    case toggleHiddenFiles
     case clearCutBuffer
     case openSettings
 }
@@ -21,7 +22,11 @@ struct FinderMenuItemSpec: Equatable {
 
 /// Pure menu construction logic, kept independent from AppKit so it can be unit tested.
 enum MenuModel {
-    static func itemsMenu(selectedCount: Int, cutCount: Int) -> [FinderMenuItemSpec] {
+    static func itemsMenu(
+        selectedCount: Int,
+        cutCount: Int,
+        hiddenFilesVisible: Bool
+    ) -> [FinderMenuItemSpec] {
         guard selectedCount > 0 else { return [] }
 
         var items: [FinderMenuItemSpec] = [
@@ -60,6 +65,7 @@ enum MenuModel {
                 symbolName: "doc.on.doc"
             )
         )
+        items.append(hiddenFilesItem(hiddenFilesVisible: hiddenFilesVisible))
         if selectedCount == 1 {
             items.append(
                 FinderMenuItemSpec(
@@ -73,7 +79,11 @@ enum MenuModel {
         return items
     }
 
-    static func containerMenu(cutCount: Int, hasTargetedURL: Bool) -> [FinderMenuItemSpec] {
+    static func containerMenu(
+        cutCount: Int,
+        hasTargetedURL: Bool,
+        hiddenFilesVisible: Bool
+    ) -> [FinderMenuItemSpec] {
         var items: [FinderMenuItemSpec] = []
 
         if cutCount > 0 {
@@ -120,6 +130,7 @@ enum MenuModel {
                 symbolName: "terminal"
             )
         )
+        items.append(hiddenFilesItem(hiddenFilesVisible: hiddenFilesVisible))
         items.append(
             FinderMenuItemSpec(
                 title: "SuperFinder 设置…",
@@ -129,5 +140,14 @@ enum MenuModel {
             )
         )
         return items
+    }
+
+    private static func hiddenFilesItem(hiddenFilesVisible: Bool) -> FinderMenuItemSpec {
+        FinderMenuItemSpec(
+            title: hiddenFilesVisible ? "不显示隐藏文件" : "显示隐藏文件",
+            action: .toggleHiddenFiles,
+            enabled: true,
+            symbolName: hiddenFilesVisible ? "eye.slash" : "eye"
+        )
     }
 }

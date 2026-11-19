@@ -22,6 +22,7 @@ SHARED_SOURCES=(
   Sources/Shared/CommandStore.swift
   Sources/Shared/PathFormatter.swift
   Sources/Shared/CutBufferStore.swift
+  Sources/Shared/FinderHiddenFiles.swift
   Sources/Shared/MenuModel.swift
   Sources/Shared/MoveEngine.swift
 )

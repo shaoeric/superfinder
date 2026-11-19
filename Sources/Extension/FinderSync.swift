@@ -23,6 +23,7 @@ final class FinderSync: FIFinderSync {
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         let controller = FIFinderSyncController.default()
+        let hiddenFilesVisible = FinderHiddenFiles.isVisible()
 
         switch menuKind {
         case .contextualMenuForItems:
@@ -31,7 +32,8 @@ final class FinderSync: FIFinderSync {
             }
             let specs = MenuModel.itemsMenu(
                 selectedCount: selected.count,
-                cutCount: cutBuffer.count
+                cutCount: cutBuffer.count,
+                hiddenFilesVisible: hiddenFilesVisible
             )
             return makeMenu(specs)
 
@@ -39,7 +41,8 @@ final class FinderSync: FIFinderSync {
             let hasTargetedURL = controller.targetedURL() != nil
             let specs = MenuModel.containerMenu(
                 cutCount: cutBuffer.count,
-                hasTargetedURL: hasTargetedURL
+                hasTargetedURL: hasTargetedURL,
+                hiddenFilesVisible: hiddenFilesVisible
             )
             return makeMenu(specs)
 
@@ -84,6 +87,8 @@ final class FinderSync: FIFinderSync {
             return #selector(openTerminalForSelection(_:))
         case .openTerminalHere:
             return #selector(openTerminalHere(_:))
+        case .toggleHiddenFiles:
+            return #selector(toggleHiddenFiles(_:))
         case .clearCutBuffer:
             return #selector(clearCutBuffer(_:))
         case .openSettings:
@@ -161,6 +166,15 @@ final class FinderSync: FIFinderSync {
         let command = MoveCommand(
             action: .openTerminal,
             sources: [url.path],
+            destination: nil
+        )
+        dispatch(command, clearCutAfter: false)
+    }
+
+    @objc func toggleHiddenFiles(_ sender: Any?) {
+        let command = MoveCommand(
+            action: .toggleHiddenFiles,
+            sources: [],
             destination: nil
         )
         dispatch(command, clearCutAfter: false)

@@ -20,6 +20,11 @@ final class MoveCoordinator {
 
         log.info("Handling command \(command.id, privacy: .public) action=\(command.action.rawValue, privacy: .public)")
 
+        if command.action == .toggleHiddenFiles {
+            handleToggleHiddenFiles()
+            return
+        }
+
         if command.action == .openTerminal {
             handleOpenTerminal(command)
             return
@@ -39,7 +44,7 @@ final class MoveCoordinator {
                 return
             }
             destination = chosen
-        case .openTerminal:
+        case .openTerminal, .toggleHiddenFiles:
             return
         }
 
@@ -53,6 +58,56 @@ final class MoveCoordinator {
         }
 
         executeMove(sources: sources, destination: destination)
+    }
+
+    // MARK: - Hidden files
+
+    private func handleToggleHiddenFiles() {
+        let visible = !FinderHiddenFiles.isVisible()
+
+        do {
+            _ = try ProcessRunner.runCheckingStatus(
+                "/usr/bin/defaults",
+                [
+                    "write",
+                    FinderHiddenFiles.preferenceDomain,
+                    FinderHiddenFiles.preferenceKey,
+                    "-bool",
+                    visible ? "true" : "false"
+                ]
+            )
+        } catch {
+            presentToggleError(
+                title: "无法切换隐藏文件",
+                detail: error.localizedDescription
+            )
+            finishHiddenFiles(visible: nil)
+            return
+        }
+
+        log.info("Finder hidden files visible=\(visible, privacy: .public)")
+
+        do {
+            _ = try ProcessRunner.runCheckingStatus("/usr/bin/killall", ["Finder"])
+        } catch {
+            presentToggleError(
+                title: "设置已保存，但 Finder 未能重启",
+                detail: "请手动重新打开 Finder 后生效。\n\(error.localizedDescription)"
+            )
+            finishHiddenFiles(visible: nil)
+            return
+        }
+
+        finishHiddenFiles(visible: visible)
+    }
+
+    private func presentToggleError(title: String, detail: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.addButton(withTitle: "好")
+        present(alert)
     }
 
     // MARK: - Open Terminal
@@ -230,6 +285,18 @@ final class MoveCoordinator {
             alert.informativeText = message
             alert.addButton(withTitle: "好")
             present(alert)
+        }
+        isBusy = false
+        replyToTerminationIfNeeded()
+        onIdle?()
+    }
+
+    private func finishHiddenFiles(visible: Bool?) {
+        statusBar?.setBusy(false)
+        if let visible {
+            statusBar?.showTransientTooltip(
+                visible ? "已显示隐藏文件" : "已不显示隐藏文件"
+            )
         }
         isBusy = false
         replyToTerminationIfNeeded()

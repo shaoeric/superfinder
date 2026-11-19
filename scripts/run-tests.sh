@@ -17,6 +17,7 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
   Sources/Shared/CommandStore.swift \
   Sources/Shared/PathFormatter.swift \
   Sources/Shared/CutBufferStore.swift \
+  Sources/Shared/FinderHiddenFiles.swift \
   Sources/Shared/MenuModel.swift \
   Sources/Shared/MoveEngine.swift \
   Sources/Screenshot/Core/Annotation.swift \
@@ -39,6 +40,7 @@ mkdir -p "$BUILD/.module-cache" "$BUILD/.test-tmp"
 
 "$ROOT/scripts/check-low-power.sh"
 "$ROOT/scripts/check-drag-event-sync.sh"
+"$ROOT/scripts/check-finder-features.sh"
 "$ROOT/scripts/check-screenshot-features.sh"
 
 "$BUILD/superfinder-tests"

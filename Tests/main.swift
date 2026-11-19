@@ -85,6 +85,31 @@ do {
     checkEqual(terminalDecoded.action, .openTerminal, "terminal command action")
     checkEqual(terminalDecoded.sources, ["/tmp"], "terminal command source")
     checkEqual(terminalDecoded.destination, nil, "terminal command destination")
+
+    let toggleCommand = MoveCommand(
+        action: .toggleHiddenFiles,
+        sources: [],
+        destination: nil
+    )
+    check(toggleCommand.hasMinimumPayload, "hidden files command has no selection payload requirement")
+    check(terminalCommand.hasMinimumPayload, "terminal command needs a source")
+    let emptyTerminal = MoveCommand(action: .openTerminal, sources: [], destination: nil)
+    check(!emptyTerminal.hasMinimumPayload, "empty terminal command is rejected")
+    let toggleDecoded = try! MoveCommand.decode(try! toggleCommand.encodedData())
+    checkEqual(toggleDecoded.action, .toggleHiddenFiles, "hidden files command action")
+    checkEqual(toggleDecoded.sources, [], "hidden files command has empty sources")
+}
+
+// MARK: - Finder hidden files preference
+
+do {
+    check(FinderHiddenFiles.isVisible(preferenceValue: NSNumber(value: true)), "hidden files true preference")
+    check(!FinderHiddenFiles.isVisible(preferenceValue: NSNumber(value: false)), "hidden files false preference")
+    check(!FinderHiddenFiles.isVisible(preferenceValue: nil), "missing hidden files preference defaults to hidden")
+    check(FinderHiddenFiles.isVisible(preferenceValue: "YES"), "hidden files string true preference")
+    check(!FinderHiddenFiles.isVisible(preferenceValue: "NO"), "hidden files string false preference")
+    check(FinderHiddenFiles.isVisible(preferenceValue: 1), "hidden files numeric true preference")
+    check(!FinderHiddenFiles.isVisible(preferenceValue: 0), "hidden files numeric false preference")
 }
 
 // MARK: - Cut buffer
@@ -108,44 +133,75 @@ do {
 // MARK: - Menu model
 
 do {
-    let items = MenuModel.itemsMenu(selectedCount: 2, cutCount: 0)
-    checkEqual(items.count, 3, "items menu without cut buffer")
+    let items = MenuModel.itemsMenu(selectedCount: 2, cutCount: 0, hiddenFilesVisible: false)
+    checkEqual(items.count, 4, "items menu without cut buffer")
     check(items.contains { $0.action == .cutSelection && $0.enabled }, "cut item")
     check(items.contains { $0.action == .copySelectedPaths && $0.enabled }, "copy paths item")
     check(!items.contains { $0.action == .moveCutItemsHere }, "no move-here item without cut buffer")
     check(!items.contains { $0.action == .openTerminalForSelection }, "no terminal item with multi selection")
 
-    let itemsSingle = MenuModel.itemsMenu(selectedCount: 1, cutCount: 0)
-    checkEqual(itemsSingle.count, 4, "items menu single selection")
+    if let hiddenItem = items.first(where: { $0.action == .toggleHiddenFiles }) {
+        checkEqual(hiddenItem.title, "显示隐藏文件", "item menu shows hidden files")
+        checkEqual(hiddenItem.symbolName, "eye", "item menu show symbol")
+        check(hiddenItem.enabled, "item menu hidden files toggle enabled")
+    } else {
+        check(false, "item menu hidden files toggle exists")
+    }
+
+    let itemsSingle = MenuModel.itemsMenu(selectedCount: 1, cutCount: 0, hiddenFilesVisible: false)
+    checkEqual(itemsSingle.count, 5, "items menu single selection")
     check(itemsSingle.contains { $0.action == .openTerminalForSelection && $0.enabled }, "terminal item for single selection")
 
-    let itemsWithCut = MenuModel.itemsMenu(selectedCount: 1, cutCount: 3)
-    checkEqual(itemsWithCut.count, 5, "items menu with cut buffer and single selection")
+    let itemsWithCut = MenuModel.itemsMenu(selectedCount: 1, cutCount: 3, hiddenFilesVisible: false)
+    checkEqual(itemsWithCut.count, 6, "items menu with cut buffer and single selection")
     check(itemsWithCut.contains { $0.action == .moveCutItemsHere && $0.title.contains("3") }, "move to selected folder item")
     check(itemsWithCut.contains { $0.action == .openTerminalForSelection }, "terminal item with cut buffer")
 
-    let itemsMulti = MenuModel.itemsMenu(selectedCount: 2, cutCount: 3)
+    let itemsMulti = MenuModel.itemsMenu(selectedCount: 2, cutCount: 3, hiddenFilesVisible: false)
     check(!itemsMulti.contains { $0.action == .moveCutItemsHere }, "no move-to-selected-folder with multi selection")
     check(!itemsMulti.contains { $0.action == .openTerminalForSelection }, "no terminal item with multi selection")
 
-    let containerEmpty = MenuModel.containerMenu(cutCount: 0, hasTargetedURL: true)
-    checkEqual(containerEmpty.count, 4, "container menu empty cut buffer")
+    let itemsVisible = MenuModel.itemsMenu(selectedCount: 1, cutCount: 0, hiddenFilesVisible: true)
+    if let hiddenItem = itemsVisible.first(where: { $0.action == .toggleHiddenFiles }) {
+        checkEqual(hiddenItem.title, "不显示隐藏文件", "item menu hides hidden files")
+        checkEqual(hiddenItem.symbolName, "eye.slash", "item menu hide symbol")
+    } else {
+        check(false, "item menu hide hidden files toggle exists")
+    }
+
+    let containerEmpty = MenuModel.containerMenu(
+        cutCount: 0,
+        hasTargetedURL: true,
+        hiddenFilesVisible: false
+    )
+    checkEqual(containerEmpty.count, 5, "container menu empty cut buffer")
     check(containerEmpty.first?.enabled == false, "move item disabled when buffer empty")
     check(containerEmpty.contains { $0.action == .copyTargetedPath && $0.enabled }, "copy current directory item")
     check(containerEmpty.contains { $0.action == .openTerminalHere && $0.enabled }, "open terminal here item")
+    check(containerEmpty.contains { $0.action == .toggleHiddenFiles && $0.title == "显示隐藏文件" }, "container menu shows hidden files")
     check(containerEmpty.last?.action == .openSettings, "settings item in container menu")
 
-    let containerWithCut = MenuModel.containerMenu(cutCount: 2, hasTargetedURL: true)
-    checkEqual(containerWithCut.count, 5, "container menu with cut buffer")
+    let containerWithCut = MenuModel.containerMenu(
+        cutCount: 2,
+        hasTargetedURL: true,
+        hiddenFilesVisible: false
+    )
+    checkEqual(containerWithCut.count, 6, "container menu with cut buffer")
     check(containerWithCut[0].title.contains("2") && containerWithCut[0].enabled, "move here enabled")
     check(containerWithCut[1].action == .clearCutBuffer, "clear cut item")
     check(containerWithCut.contains { $0.action == .openTerminalHere && $0.enabled }, "terminal item with cut buffer")
+    check(containerWithCut.contains { $0.action == .toggleHiddenFiles && $0.title == "显示隐藏文件" }, "container menu hidden files toggle")
     check(containerWithCut.last?.action == .openSettings, "settings item with cut buffer")
 
-    let containerNoTarget = MenuModel.containerMenu(cutCount: 2, hasTargetedURL: false)
+    let containerNoTarget = MenuModel.containerMenu(
+        cutCount: 2,
+        hasTargetedURL: false,
+        hiddenFilesVisible: true
+    )
     check(containerNoTarget[0].enabled == false, "move here disabled without target")
     check(containerNoTarget.contains { $0.action == .copyTargetedPath && !$0.enabled }, "copy current dir disabled without target")
     check(containerNoTarget.contains { $0.action == .openTerminalHere && !$0.enabled }, "terminal item disabled without target")
+    check(containerNoTarget.contains { $0.action == .toggleHiddenFiles && $0.title == "不显示隐藏文件" }, "container menu hides hidden files")
     check(containerNoTarget.contains { $0.action == .openSettings && $0.enabled }, "settings enabled without target")
 }
 
